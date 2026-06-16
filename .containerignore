@@ -1,0 +1,29 @@
+# Excluded from podman build contexts (BOTH the engine container at
+# container/engine/Containerfile and the web container at
+# container/aceman-web/Containerfile.web).
+#
+# Rule of thumb: list only things never needed by either image. Each
+# Containerfile gates what it actually pulls via explicit COPY.
+
+*.sha256
+*.md
+*.log
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+# NOTE: container/engine/dist/ is NOT excluded — the engine
+# Containerfile does `COPY dist/engine.tar.gz`, so the tarball must
+# remain visible to the build context (which is container/engine/
+# itself). The .sha256 sidecar is the only thing in dist/ we don't
+# need in the image, and it's covered by *.sha256.
+
+.git
+.gitignore
+.claude/
+
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

@@ -1,0 +1,155 @@
+"""Engine container lifecycle actions.
+
+All state-changing podman calls are serialised under a single lock —
+two concurrent "Start engine" clicks must not race into a double
+spawn or stop-while-starting.
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import threading
+import time
+
+from ..config import (
+    ENGINE_URL,
+    IMAGE,
+    LAUNCHER_TIMEOUT,
+    NAME,
+    RUN_SH,
+    START_WAIT_SECONDS,
+    STOP_TIMEOUT,
+)
+from ..engine_ops import (
+    container_running,
+    container_state,
+    engine_probe,
+)
+from ..logging_util import _log, _safe
+from ..validators import validate_lines
+from ..wrapper import wrapper_alive
+from . import register
+
+
+# Serialises every state-changing engine action.
+_engine_lock = threading.Lock()
+
+
+def action_engine_logs(params: "dict | None" = None) -> dict:
+    """Tail engine container logs via ``podman logs --tail N``."""
+    lines = validate_lines(
+        (params or {}).get("lines"), maximum=1000, default=200)
+    try:
+        r = subprocess.run(
+            ["podman", "logs", "--tail", str(lines), NAME],
+            capture_output=True, text=True, timeout=8,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+        return {"path": f"podman logs {NAME}", "tail": f"({e})",
+                "lines": 0, "size_bytes": 0, "available": False}
+    if r.returncode != 0:
+        return {"path": f"podman logs {NAME}",
+                "tail": _safe(r.stderr or "container not running"),
+                "lines": 0, "size_bytes": 0, "available": False}
+    text = (r.stdout or "") + (r.stderr or "")
+    tail = text.rstrip("\n")
+    return {"path": f"podman logs {NAME}",
+            "tail": tail,
+            "lines": tail.count("\n") + 1 if tail else 0,
+            "size_bytes": len(tail.encode("utf-8")),
+            "available": True}
+
+
+def action_engine_status(params: "dict | None" = None) -> dict:
+    state = container_state()
+    return {
+        "container": state == "running",
+        "container_state": state,
+        "up": engine_probe(),
+        "wrapper_alive": wrapper_alive(),
+    }
+
+
+def action_engine_start(params: "dict | None" = None) -> dict:
+    with _engine_lock:
+        if container_running():
+            return {"started": False, "reason": "already running"}
+        _log("engine", "start: spawning '%s' via %s", NAME, RUN_SH)
+        env = os.environ.copy()
+        env["ACE_DETACH"] = "1"
+        env["ACE_NAME"] = NAME
+        env["ACE_IMAGE"] = IMAGE
+        try:
+            r = subprocess.run(
+                ["bash", str(RUN_SH)],
+                env=env, capture_output=True, text=True,
+                timeout=LAUNCHER_TIMEOUT,
+            )
+        except FileNotFoundError as e:
+            raise RuntimeError(f"bash not on PATH: {e}") from e
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError("launcher timed out") from e
+        if r.returncode != 0:
+            msg = _safe((r.stderr or r.stdout or "").strip())
+            raise RuntimeError(
+                f"launcher exited {r.returncode}: {msg or '<no output>'}")
+        deadline = time.monotonic() + START_WAIT_SECONDS
+        while time.monotonic() < deadline:
+            if engine_probe(timeout=2):
+                _log("engine", "start: ready")
+                return {"started": True}
+            time.sleep(1)
+        raise RuntimeError(
+            f"container started but engine never answered at {ENGINE_URL}")
+
+
+def action_engine_stop(params: "dict | None" = None) -> dict:
+    with _engine_lock:
+        if not container_running():
+            return {"stopped": False, "reason": "not running"}
+        _log("engine", "stop: '%s'", NAME)
+        try:
+            subprocess.run(
+                ["podman", "stop", "-t", "5", NAME],
+                capture_output=True, timeout=STOP_TIMEOUT,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+            raise RuntimeError(f"podman stop failed: {e}") from e
+        return {"stopped": True}
+
+
+def action_engine_restart(params: "dict | None" = None) -> dict:
+    with _engine_lock:
+        if not container_running():
+            return {"restarted": False, "reason": "not running"}
+        _log("engine", "restart: '%s'", NAME)
+        try:
+            r = subprocess.run(
+                ["podman", "restart", "-t", "5", NAME],
+                capture_output=True, text=True, timeout=20,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+            raise RuntimeError(f"podman restart failed: {e}") from e
+        if r.returncode != 0:
+            msg = _safe((r.stderr or r.stdout or "").strip())
+            raise RuntimeError(
+                f"podman restart exited {r.returncode}: "
+                f"{msg or '<no output>'}")
+        deadline = time.monotonic() + START_WAIT_SECONDS
+        while time.monotonic() < deadline:
+            if engine_probe(timeout=2):
+                _log("engine", "restart: ready")
+                return {"restarted": True}
+            time.sleep(1)
+        raise RuntimeError(
+            f"container restarted but engine never answered at {ENGINE_URL}")
+
+
+def register(actions: dict) -> None:
+    from . import register as _r
+    _r(actions, "engine.status", action_engine_status)
+    _r(actions, "engine.logs", action_engine_logs)
+    _r(actions, "engine.start", action_engine_start)
+    _r(actions, "engine.stop", action_engine_stop)
+    _r(actions, "engine.restart", action_engine_restart)

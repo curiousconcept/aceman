@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# aceman_web_stop — POST /api/shutdown to a running aceman_web.
+#
+# Useful when you launched the web app from the desktop entry (no
+# terminal to Ctrl-C in) and the auto-shutdown timeout is too long.
+#
+# Stops the engine container too unless --keep-engine is passed. Same
+# behaviour as the UI's Quit button — explicit stop means "everything
+# down". Defaults match what the launcher uses: 127.0.0.1:8765. Override
+# via env vars (ACEWATCH_WEB_HOST / ACEWATCH_WEB_PORT) or flags.
+
+set -e
+
+HOST="${ACEWATCH_WEB_HOST:-127.0.0.1}"
+PORT="${ACEWATCH_WEB_PORT:-8765}"
+STOP_ENGINE=true
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --keep-engine)
+            STOP_ENGINE=false; shift ;;
+        --host)
+            [ $# -ge 2 ] || { echo "aceman_web_stop: --host needs a value" >&2; exit 2; }
+            HOST="$2"; shift 2 ;;
+        --port)
+            [ $# -ge 2 ] || { echo "aceman_web_stop: --port needs a value" >&2; exit 2; }
+            PORT="$2"; shift 2 ;;
+        -h|--help)
+            cat <<'EOF'
+aceman_web_stop — gracefully shut down a running aceman_web.
+
+Usage:
+  aceman_web_stop                      # stops engine container too
+  aceman_web_stop --keep-engine        # leaves engine running
+  aceman_web_stop --host H --port N    # talk to a non-default address
+
+Env:
+  ACEWATCH_WEB_HOST  default 127.0.0.1
+  ACEWATCH_WEB_PORT  default 8765
+
+Exits 0 if the server acknowledged shutdown (or had already exited),
+non-zero on bad arguments or a network error other than "connection
+closed mid-response" (which is the normal success path).
+EOF
+            exit 0 ;;
+        *)
+            echo "aceman_web_stop: unknown option: $1" >&2; exit 2 ;;
+    esac
+done
+
+URL="http://${HOST}:${PORT}/api/shutdown"
+BODY="{\"stop_engine\": ${STOP_ENGINE}}"
+
+# Curl exits 56 (recv failure) when the server closes the socket while
+# returning our response — that's the expected race because httpd.shutdown()
+# fires from a daemon thread right after the 202. Treat 0 and 56 as success.
+HTTP_BODY=$(curl -fsS --max-time 5 -X POST \
+    -H 'content-type: application/json' \
+    --data "$BODY" "$URL" 2>&1) || rc=$?
+rc=${rc:-0}
+case "$rc" in
+    0)
+        echo "aceman_web_stop: $HTTP_BODY" ;;
+    56)
+        echo "aceman_web_stop: server closed connection (expected; shutdown in flight)" ;;
+    7)
+        # curl 7 = "couldn't connect". Either nothing's running, or it
+        # already finished shutting down between our two requests.
+        echo "aceman_web_stop: nothing listening on ${HOST}:${PORT} (already stopped?)"
+        exit 0 ;;
+    *)
+        echo "aceman_web_stop: curl exited $rc: $HTTP_BODY" >&2
+        exit "$rc" ;;
+esac

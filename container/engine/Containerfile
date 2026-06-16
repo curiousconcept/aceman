@@ -1,0 +1,35 @@
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 \
+        libpython3.10 \
+        python3-pip \
+        python3-apsw \
+        python3-lxml \
+        python3-nacl \
+        python3-setuptools \
+        ca-certificates \
+    && pip3 install --no-cache-dir pycryptodome==3.20.0 \
+    && apt-get purge -y python3-pip && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* /root/.cache
+
+COPY dist/engine.tar.gz /opt/engine.tar.gz
+RUN mkdir -p /opt/acestream \
+    && tar xzf /opt/engine.tar.gz -C /opt/acestream \
+    && rm /opt/engine.tar.gz \
+    && chmod +x /opt/acestream/start-engine /opt/acestream/acestreamengine
+
+RUN useradd -m -u 1000 ace \
+    && mkdir -p /home/ace/.ACEStream \
+    && chown -R ace:ace /home/ace /opt/acestream
+
+USER ace
+WORKDIR /home/ace
+ENV PYTHON_EGG_CACHE=/tmp/python-eggs
+EXPOSE 6878
+
+# ENTRYPOINT (not CMD) so run-container.sh can append extra engine flags
+# (--disk-cache-limit, --download-limit, …) without having to re-spell
+# the base invocation. CMD=[] means "no default extra args".
+ENTRYPOINT ["/opt/acestream/start-engine", "--client-console", "--bind-all", "--disable-sentry"]
+CMD []

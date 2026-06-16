@@ -1,0 +1,48 @@
+# Aceman web frontend — rootless podman container.
+#
+# Sibling to container/engine/Containerfile (which sandboxes the untrusted
+# acestream engine). This image is for OUR code: the Python web
+# frontend that the user actually browses. Reason to containerize it
+# even though it's our own code:
+#   * Distribution — ship one image, no host python install needed.
+#   * No host ffmpeg dependency — the in-browser stream proxy spawns
+#     ffmpeg via subprocess; bundling it removes a setup step.
+#   * Same blast-radius story as the engine: a hypothetical bug in
+#     our stream proxy or HTTP server can't reach host files outside
+#     the explicit volume mounts.
+#
+# Broker stays on the host. It needs podman (which means access to
+# the user's podman socket / fork-exec rights), file-system access to
+# write the desktop entry, and the ability to spawn the shell
+# `aceman` wrapper for player launch. None of that survives a
+# container boundary without weakening it pointlessly. The web in the
+# container talks to the host broker over the UNIX socket at
+# $XDG_RUNTIME_DIR/aceman/broker.sock, which is mounted in.
+
+FROM docker.io/library/python:3.11-slim-bookworm
+
+# ffmpeg is the only system dependency the web actually exec()s.
+# --no-install-recommends keeps the image lean (no docs / X libs).
+# rm -rf /var/lib/apt/lists shaves another ~40 MB.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Project root is the build context. We only need web/, the mpegts.js
+# vendor bundle and the HTML/CSS sit under web/. Broker code stays on
+# the host so we don't ship it inside this image.
+COPY web /app/web
+
+# Per project convention: stdlib-only Python. No requirements.txt /
+# pip install step.
+
+# Default port — overridable from the launcher's --port flag.
+EXPOSE 8770
+
+# The launcher passes a full argv (--host / --port / --engine /
+# --broker-socket / etc.); CMD is just a sane fallback for a bare
+# `podman run` without args. Bind 0.0.0.0 so the host's port forward
+# can reach us.
+CMD ["python3", "web/aceman_web.py", "--host", "0.0.0.0", "--port", "8770"]
