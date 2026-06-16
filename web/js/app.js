@@ -16,6 +16,8 @@ import { debounce } from './lib/debounce.js';
 import { paginate } from './lib/pagination.js';
 import { shouldSearch, normaliseQuery, buildSearchUrl } from './lib/search_query.js';
 import { saveLastPlay, loadLastPlay, clearLastPlay } from './lib/last_play.js';
+import { browserLabel, detectCurrentBrowser as detectCurrentBrowserPure }
+  from './lib/browsers.js';
 
 const $ = id => document.getElementById(id);
 
@@ -1135,37 +1137,16 @@ async function loadBrowsers() {
   renderPlaybackTargets();
 }
 
-function _browserLabel(name) {
-  switch (name) {
-    case 'firefox': return 'Firefox';
-    case 'brave': return 'Brave';
-    case 'chromium': return 'Chromium';
-    case 'google-chrome': return 'Google Chrome';
-    default: return name;
-  }
-}
-
-// UA-sniffing for *just* the four browsers we ship probes for. Returns
-// one of those names or '' if uncertain. We use it to (a) label
-// "This <browser> tab" instead of the generic "This browser tab", and
-// (b) hide the matching detected entry from "Other browsers" so the
-// user isn't offered to "move" the stream to the same browser they're
-// already in. Brave is special because its UA pretends to be Chrome —
-// the navigator.brave runtime API is the reliable signal.
+// Display-name mapping + UA detection live in ./lib/browsers.js.
+// We keep `_currentBrowserName` as a wired-in slot so the renderer
+// can read it synchronously after init resolves.
+const _browserLabel = browserLabel;
 let _currentBrowserName = '';
 async function detectCurrentBrowser() {
-  const ua = navigator.userAgent || '';
-  // navigator.brave is async and returns a boolean. If present, trust
-  // it absolutely (Brave deliberately hides itself in the UA string).
-  try {
-    if (navigator.brave && await navigator.brave.isBrave()) {
-      _currentBrowserName = 'brave'; return;
-    }
-  } catch (_) { /* fall through */ }
-  if (/\bFirefox\//.test(ua))            _currentBrowserName = 'firefox';
-  else if (/\bChromium\//.test(ua))      _currentBrowserName = 'chromium';
-  else if (/\bChrome\//.test(ua))        _currentBrowserName = 'google-chrome';
-  else                                   _currentBrowserName = '';
+  _currentBrowserName = await detectCurrentBrowserPure({
+    userAgent: navigator.userAgent || '',
+    brave: navigator.brave || null,
+  });
 }
 
 // (Browsers are rendered as options inside the unified "Play in"
