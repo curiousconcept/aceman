@@ -1,0 +1,24 @@
+# Engine binary — the README points users to acestream.media to fetch
+# this themselves. Keeping it out of git matches that instruction and
+# keeps the repo small; the .sha256 sibling stays so users can verify.
+dist/engine.tar.gz
+
+# Claude Code tooling state (per-clone, not source).
+.claude/
+claude resume*.txt
+
+# Python bytecode / build artefacts.
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Editor / OS junk.
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Local logs (the project writes these under ~/.cache/aceman by
+# default; this is just a safety net if a user runs from this dir).
+*.log

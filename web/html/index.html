@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Aceman</title>
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+<style>
+/*__ACEMAN_CSS_HERE__*/
+</style>
+</head>
+<body>
+
+<div id="busy-modal" class="modal-backdrop" style="display:none" role="dialog" aria-modal="true" aria-live="polite">
+  <div class="modal-card" style="text-align:center; max-width: 18rem">
+    <h3 style="margin:.2rem 0 .4rem">Please wait</h3>
+    <div id="busy-modal-msg" class="gate-hint" style="margin:0">Working…</div>
+  </div>
+</div>
+
+<div id="reset-modal" class="modal-backdrop" style="display:none" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <h3 style="color: var(--err)">Factory reset</h3>
+    <p><strong>Removes</strong>: the engine container and image, the app
+       launcher, the <code>acestream://</code> scheme handler (restored
+       to your previous handler if a backup exists, otherwise scrubbed),
+       your favourites database, the server-side config file, and the
+       host-side broker process.</p>
+    <p><strong>Kept</strong>: log files in
+       <code>~/.cache/aceman/</code> (useful for post-mortem; delete
+       manually if you want).</p>
+    <p>This cannot be undone.</p>
+    <p>Type <code>RESET</code> below to confirm:</p>
+    <div class="row">
+      <input type="text" id="reset-confirm-input" placeholder="RESET" autocomplete="off">
+    </div>
+    <div class="install-opt">
+      <button id="reset-go" class="danger" disabled>Wipe everything</button>
+    </div>
+    <div class="install-opt">
+      <button id="reset-cancel">Cancel</button>
+    </div>
+    <pre id="reset-report" style="display:none; max-height:220px; overflow:auto;
+         background:#0a0a0a; border:1px solid #222; border-radius:4px;
+         padding:.5rem .6rem; font-size:.72rem; font-family:ui-monospace,monospace;
+         white-space:pre-wrap;"></pre>
+  </div>
+</div>
+
+<div id="install-modal" class="modal-backdrop" style="display:none" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <h3>Install launcher</h3>
+    <p>Pick how you'd like to install aceman on this machine.</p>
+    <div class="install-opt">
+      <button id="install-with-scheme" class="primary">Install &amp; claim <code>acestream://</code> links</button>
+      <div class="opt-sub">
+        Adds an "aceman" entry to your app launcher and makes clicking
+        <code>acestream://</code> URLs in your browser / chat / file manager
+        open here. If another app currently owns this scheme, your
+        <code>~/.config/mimeapps.list</code> will be copied to
+        <code>mimeapps.list.bk</code> first.
+      </div>
+    </div>
+    <div class="install-opt">
+      <button id="install-only">Just install the launcher</button>
+      <div class="opt-sub">
+        Adds the app-grid entry only — does not change any link associations.
+      </div>
+    </div>
+    <div class="install-opt">
+      <button id="install-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="favname-modal" class="modal-backdrop" style="display:none" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <h3>Name this favourite</h3>
+    <p>Pick the label to save under.</p>
+    <label class="favname-opt" id="favname-english-opt" style="display:none">
+      <input type="radio" name="favname-choice" value="english">
+      <span><span class="favname-kind">English</span> <span id="favname-english-text"></span></span>
+    </label>
+    <label class="favname-opt" id="favname-original-opt" style="display:none">
+      <input type="radio" name="favname-choice" value="original">
+      <span><span class="favname-kind">Original</span> <span id="favname-original-text"></span></span>
+    </label>
+    <div class="favname-custom-row">
+      <span class="favname-kind">Custom</span>
+      <input id="favname-custom-input" type="text" maxlength="120" placeholder="Type a name…">
+    </div>
+    <div class="favname-actions">
+      <button id="favname-save" class="primary">Save</button>
+      <button id="favname-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<h1 style="margin: 0 0 1.5rem; line-height: 1">
+  <span id="aceman-title" class="aceman" role="button" tabindex="0"
+        title="Click to toggle glow"
+        aria-label="Toggle glow effect">ACEMAN</span>
+</h1>
+
+<div class="main">
+  <div class="right-col">
+    <div class="top-row">
+      <div class="card has-card-label">
+        <span class="card-label">Player</span>
+        <div class="field">
+          <span class="field-label">Play in</span>
+          <select id="playback-target" disabled><option>…</option></select>
+          <button id="playback-move" style="display:none">Move current stream here</button>
+        </div>
+        <div class="field" style="justify-content: center">
+          <label style="font-size:.78rem; color:var(--mut)"
+                 title="By default we hide browser entries that look like the one you're already in, since the browser's UA string can't distinguish, e.g., system Firefox from Flatpak Firefox. Turn this on to see every detected install — useful only when you specifically want to switch between two installs of the same browser.">
+            <input type="checkbox" id="show-all-browsers"> Show all browser installs
+          </label>
+        </div>
+        <div class="gate-hint" id="player-hint"></div>
+      </div>
+
+      <div class="card has-card-label">
+        <span class="card-label"><span id="engine-label" class="has-tooltip">Engine</span> <span class="status" id="engine-status" style="margin-left:.3rem">…</span></span>
+        <div class="row" style="justify-content: center">
+          <label><input type="checkbox" id="autostart"> Start engine when aceman launches</label>
+        </div>
+        <div class="row" style="justify-content: center">
+          <button id="engine-toggle" disabled>…</button>
+          <span class="gate-hint" id="engine-toggle-hint"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card has-card-label" id="search-card">
+      <span class="card-label"><span id="search-label" class="has-tooltip">Find streams</span> <span class="status" id="search-status" style="margin-left:.3rem"></span></span>
+      <div class="row">
+        <input type="text" id="search-input"
+               placeholder="Search by channel name…"
+               autocomplete="off" autocorrect="off" spellcheck="false">
+      </div>
+      <div id="search-results"></div>
+      <div class="pager" id="search-pager" style="display:none">
+        <button id="search-prev">‹ Prev</button>
+        <span class="status" id="search-info"></span>
+        <button id="search-next">Next ›</button>
+      </div>
+    </div>
+
+    <div class="card has-card-label" id="play-card">
+      <span class="card-label" id="playback-label">
+        <span id="playback-title">Playback</span>
+        <span id="playback-live" class="live-dot" style="display:none">live</span>
+      </span>
+      <div class="row" style="flex-wrap: wrap">
+        <button id="play-btn" class="primary icon-btn" title="Play" aria-label="Play">▶</button>
+        <input type="text" id="cid-input" placeholder="40-hex content id or acestream://..." autofocus style="min-width: 12rem">
+        <button id="save-btn" style="display:none">Save as favourite</button>
+      </div>
+      <div class="gate-hint" id="play-hint"></div>
+      <div class="err" id="err"></div>
+      <div id="now-playing" style="display:none">
+        <video id="pb-video" controls playsinline
+               style="display:none; width:100%; max-height:55vh; background:#000; margin:.5rem 0"></video>
+        <div class="row" style="justify-content: flex-end; gap: .5rem; flex-wrap: wrap">
+          <div class="gate-hint" id="pb-video-status" style="margin: 0; flex-shrink: 0"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card has-card-label">
+      <span class="card-label">Setup &amp; tools</span>
+
+      <div class="setup-grid">
+        <div class="setup-row">
+          <div class="setup-row-head">
+            <span class="has-tooltip" id="image-label">Engine image</span>
+            <span class="status" id="image-status">…</span>
+          </div>
+          <div class="row">
+            <button id="image-install" disabled title="Build (or rebuild) the local container image the engine runs in. Pulls base layers from the registry; takes a couple of minutes the first time.">…</button>
+            <button id="image-uninstall" disabled class="danger-outline" title="Remove the local engine image. Any running container is stopped first.">Uninstall</button>
+            <span class="status" id="image-hint" style="display:none"></span>
+          </div>
+          <details id="image-log-wrap" style="display:none; margin-top:.5rem">
+            <summary style="cursor:pointer; font-size:.8rem; color: var(--mut)">Build log</summary>
+            <pre id="image-log"></pre>
+          </details>
+          <code id="image-tag" style="display:none"></code>
+        </div>
+
+        <div class="setup-row">
+          <div class="setup-row-head">
+            <span class="has-tooltip" id="desktop-label">App launcher</span>
+            <span class="status" id="desktop-status">…</span>
+          </div>
+          <div class="row">
+            <button id="desktop-toggle" disabled title="Add (or remove) the aceman entry in your application launcher and optionally register it as the handler for acestream:// links.">…</button>
+          </div>
+          <span id="desktop-path" style="display:none"></span>
+        </div>
+
+        <div class="setup-row">
+          <div class="setup-row-head">
+            <span>Lifecycle</span>
+          </div>
+          <div class="row">
+            <button id="server-restart" title="Re-spawn the aceman web frontend and the host broker. The engine container is podman-restarted alongside. Any active player is closed first. The browser tab reloads itself when the new instance comes up.">Restart</button>
+            <button id="server-shutdown" title="Stop everything: close the active external player (if any), stop the engine container, terminate the host broker, and shut down the web frontend. The browser tab will display a 'stopped' notice — you can then close it.">Quit</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="setup-row">
+        <div class="logs-tabs">
+          <button class="logs-tab" data-kind="web">
+            <strong>Server logs</strong>
+            <span class="status" data-role="logs-status"></span>
+            <span class="logs-toggle" data-role="logs-toggle" title="Pause auto-refresh">⏸</span>
+          </button>
+          <button class="logs-tab" data-kind="broker">
+            <strong>Broker logs</strong>
+            <span class="status" data-role="logs-status"></span>
+            <span class="logs-toggle" data-role="logs-toggle" title="Pause auto-refresh">⏸</span>
+          </button>
+          <button class="logs-tab" data-kind="engine">
+            <strong>Engine logs</strong>
+            <span class="status" data-role="logs-status"></span>
+            <span class="logs-toggle" data-role="logs-toggle" title="Pause auto-refresh">⏸</span>
+          </button>
+        </div>
+        <pre id="logs-viewer" style="display:none"></pre>
+      </div>
+
+      <div class="setup-row danger-zone">
+        <div class="setup-row-head" style="justify-content: center">
+          <span><strong style="color: var(--err)">Danger zone</strong></span>
+        </div>
+        <div class="row" style="justify-content: center">
+          <button id="factory-reset" class="danger" title="Wipe everything: engine container + image, app launcher and acestream:// scheme handler (restored from backup if present), favourites DB, server-side config, host broker. Log files in ~/.cache/aceman/ are kept for post-mortem.">Factory reset…</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="favs-col">
+    <div class="card has-card-label">
+      <span class="card-label">★ Favourites <span id="storage-badge" class="badge has-tooltip" style="margin-left:.3rem"></span></span>
+      <div class="row">
+        <input type="text" id="fav-search" placeholder="Search…">
+      </div>
+      <div id="fav-list"></div>
+      <div id="fav-empty" class="status" style="display:none">
+        No favourites yet — play something and click "Save as favourite".
+      </div>
+      <div class="pager" id="fav-pager">
+        <button id="fav-prev">‹ Prev</button>
+        <span class="status" id="fav-info"></span>
+        <button id="fav-next">Next ›</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/mpegts.min.js"></script>
+<script>
+//__ACEMAN_JS_HERE__
+</script>
+</body>
+</html>

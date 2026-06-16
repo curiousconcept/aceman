@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# aceman_web — thin launcher for the Python web frontend.
+#
+# Lets the .desktop entry, scripts, and shells reference a single stable
+# path ("$REPO/aceman_web") rather than embedding the python interpreter
+# and the .py file's location. Resolves its own directory through any
+# symlinks so the wrapper can be itself symlinked into ~/bin.
+#
+# Also bootstraps the host-side broker (broker/aceman-broker) — a tiny
+# unix-socket service that owns the podman allow-list. The Python web
+# never touches podman directly; it sends actions to the broker over a
+# unix socket. Spawning here keeps the project a single "double-click to
+# run" deal: no systemd unit to install, no per-platform service
+# manifest. Broker survives this wrapper exiting and serves any future
+# launches in the same user session.
+
+set -e
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+
+# Log directory. Both the web frontend and the auto-spawned broker
+# append here so `tools/tail-*.sh` (and any `tail -f` you fancy) have a
+# stable path. ~/.cache lives outside ~/.config on purpose — these are
+# session logs, not configuration.
+LOG_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/aceman"
+mkdir -p "$LOG_DIR"
+WEB_LOG="$LOG_DIR/web.log"
+BROKER_LOG="$LOG_DIR/broker.log"
+
+# If any argv element is an acestream:// URL, this invocation came from
+# the xdg-mime scheme handler (browser/file-manager click), not from the
+# app launcher icon. Where it gets routed depends on the user's
+# playback_mode preference:
+#   "external" (default): exec the host `aceman` shell — it manages
+#       player + engine-session lifecycle directly (single-active-session
+#       lock, kill-old-on-new-click, command_url?method=stop on exit).
+#   "browser":            fall through to the Python launch below; we
+#       pass the URL on so main() can encode it as ?play=<cid> in the
+#       browser_url it opens. If the web is already running, the
+#       port-collision path opens the URL in the existing instance.
+# Resolution order: $ACE_PLAYBACK_MODE env override → config.json →
+# "external" fallback. Matches the resolution the shell already uses for
+# ACE_PLAYER.
+_resolve_playback_mode() {
+    if [ -n "${ACE_PLAYBACK_MODE:-}" ]; then
+        printf '%s' "$ACE_PLAYBACK_MODE"
+        return
+    fi
+    local cfg="${XDG_CONFIG_HOME:-$HOME/.config}/aceman/config.json"
+    if [ -r "$cfg" ] && command -v jq >/dev/null; then
+        local m
+        m="$(jq -r '.playback_mode // ""' "$cfg" 2>/dev/null)"
+        if [ -n "$m" ]; then printf '%s' "$m"; return; fi
+    fi
+    printf 'external'
+}
+for _arg in "$@"; do
+    case "$_arg" in
+        acestream://*)
+            _mode="$(_resolve_playback_mode)"
+            case "$_mode" in
+                browser)
+                    # Don't exec the shell — fall through so Python sees
+                    # the URL. argv still contains it, plus whatever the
+                    # desktop entry put before it (--open-browser etc.).
+                    break
+                    ;;
+                *)
+                    exec "$SCRIPT_DIR/aceman" "$_arg"
+                    ;;
+            esac
+            ;;
+    esac
+done
+unset _arg _mode
+unset -f _resolve_playback_mode
+
+# Ensure the broker is running. Idempotent: if the socket already exists,
+# the broker is up from a previous launch (or, harmlessly, the kernel left
+# a stale socket file — the broker will unlink + rebind on next start).
+BROKER_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/aceman"
+BROKER_SOCK="$BROKER_RUNTIME_DIR/broker.sock"
+if [ -S "$BROKER_SOCK" ]; then
+    BROKER_ALREADY_RUNNING=1
+else
+    BROKER_ALREADY_RUNNING=0
+    mkdir -p "$BROKER_RUNTIME_DIR"
+    # setsid -f detaches from this shell and the terminal, so the broker
+    # outlives both this wrapper and the python process it spawns next.
+    # Append to a log file under the cache dir so tools/tail-broker.sh
+    # can show what it's doing. A session marker keeps successive runs
+    # separable when reading the file later.
+    printf '\n=== %s broker starting ===\n' "$(date '+%Y-%m-%d %H:%M:%S')" \
+        >> "$BROKER_LOG"
+    setsid -f "$SCRIPT_DIR/broker/aceman-broker" \
+        </dev/null >>"$BROKER_LOG" 2>&1 || true
+    # Wait up to ~1s for the socket. The broker binds before serving its
+    # first request, so once the inode shows up we're good to go.
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        [ -S "$BROKER_SOCK" ] && break
+        sleep 0.1
+    done
+fi
+
+# No URL → app launcher click or direct CLI invocation. Run the Python
+# web frontend.
+#
+# Output routing:
+#   * Always appended to $WEB_LOG so tools/tail-web.sh has a stable
+#     file to follow, and so a 30-minute-later debug ("why did the
+#     stream stop?") has the data on disk.
+#   * If we have a terminal, also tee to it so the user keeps seeing
+#     live output without losing the on-disk copy. The `>(tee ...)`
+#     process substitution outlives `exec` because tee's stdin fd is
+#     inherited by the python process; tee exits when python closes it.
+printf '\n=== %s aceman_web starting (broker_already_running=%s) ===\n' \
+    "$(date '+%Y-%m-%d %H:%M:%S')" "$BROKER_ALREADY_RUNNING" >> "$WEB_LOG"
+if [ -t 1 ] && [ -t 2 ]; then
+    exec > >(tee -a "$WEB_LOG") 2>&1
+else
+    exec >>"$WEB_LOG" 2>&1
+fi
+# Container vs native dispatch.
+#
+# Two ways to ask for the containerised web:
+#   * env: ACE_WEB_CONTAINER=1 aceman_web
+#   * flag: aceman_web --container ...   (consumed here; not forwarded)
+#
+# The container mode wraps the Python in a rootless podman image that
+# already has ffmpeg baked in. The broker stays on the host either way
+# — it needs podman + host filesystem access to manage the engine
+# container and write the desktop entry; containerising it would just
+# weaken the isolation we built it for.
+WEB_USE_CONTAINER="${ACE_WEB_CONTAINER:-0}"
+_web_argv=()
+for _arg in "$@"; do
+    case "$_arg" in
+        --container) WEB_USE_CONTAINER=1 ;;
+        *) _web_argv+=("$_arg") ;;
+    esac
+done
+
+if [ "$WEB_USE_CONTAINER" = "1" ]; then
+    exec -a aceman_web "$SCRIPT_DIR/container/run-web-container.sh" "${_web_argv[@]}"
+fi
+
+# `exec -a NAME` sets argv[0] of the new process. Makes `ps -ef`, `ss -tlnp`,
+# `lsof`, and `pkill aceman_web` show a useful name instead of "python3".
+# (Python additionally calls prctl(PR_SET_NAME) at startup to fix /proc/PID/comm.)
+exec -a aceman_web python3 "$SCRIPT_DIR/web/aceman_web.py" "${_web_argv[@]}"

@@ -1,0 +1,505 @@
+  :root { color-scheme: light dark;
+          --bg:#111;--fg:#eee;--mut:#888;--acc:#4af;
+          /* Dirty-mustard accent used on input-focus rings and button
+             hover borders. Lifted into a variable so all the places
+             that pick up "hover or focus highlight" stay in sync. */
+          --hover:#b59238;
+          /* Used by .err / .status.bad — kept brighter for foreground text */
+          --err:#f55;
+          /* Darker red for danger-action buttons (Uninstall, Quit, Factory
+             reset, etc.) so they don't shout off the page. */
+          --danger:#c33;
+          /* Play-button green — matches .status.ok and reads as "go". */
+          --go:#6c6; }
+  body { font: 14px/1.4 system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem;
+         background: var(--bg); color: var(--fg); }
+  h1 { font-size: 1.4rem; margin: 0 0 .25rem; text-align: center; }
+  .sub { color: var(--mut); font-size: .85rem; margin-bottom: 1.5rem; text-align: center; }
+  input[type=text] { width: 100%; padding: .5rem; box-sizing: border-box;
+                     background: #1a1a1a; color: var(--fg); border: 1px solid #333; border-radius: 4px; }
+  /* Focus ring on text inputs uses the same dirty mustard as button
+     hover so all "this is hot" highlighting stays in one tone. */
+  input[type=text]:focus { outline: none; border-color: var(--hover);
+                           box-shadow: 0 0 0 2px rgba(181,146,56,.22); }
+  /* Mustard everywhere accent-color applies: checkboxes/radios, the
+     <select> dropdown's currently-highlighted option, AND the native
+     <video> controls' playback timeline & progress. Browsers route
+     the system's "primary tint" through this single property, which
+     is why selecting one value here recolours all four widget classes
+     consistently — no more purple option highlights, no more blue
+     <video> progress bar. */
+  input[type=checkbox], input[type=radio],
+  select,
+  video { accent-color: var(--hover); }
+  button { padding: .4rem .8rem; margin: .15rem .15rem .15rem 0; cursor: pointer;
+           background: #222; color: var(--fg); border: 1px solid #444; border-radius: 4px; font: inherit; }
+  button:hover:not(:disabled) { border-color: var(--hover); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { background: var(--acc); color: #000; border-color: var(--acc); font-weight: 600; }
+  button.danger { color: var(--danger); border-color: #553; }
+  button.danger:hover:not(:disabled) {
+    background: rgba(204, 51, 51, .12);
+    border-color: var(--danger);
+  }
+  /* Outline variant: maroon border + default text color. Used for
+     mid-weight destructive actions (Engine Stop, Uninstall image,
+     Uninstall launcher) where bright red text would over-shout the
+     real danger button (Factory reset, which keeps the red text). */
+  button.danger-outline {
+    color: inherit;
+    border-color: var(--danger);
+  }
+  button.danger-outline:hover:not(:disabled) {
+    background: rgba(204, 51, 51, .1);
+    border-color: var(--danger);
+  }
+
+  /* Play / Stop button colour scheme.
+     Default state (▶): green, reads as "go" — matches the .status.ok
+     green elsewhere in the UI.
+     Playing state (⏹): neutral white with an animated yellow
+     "snake-border" running around it. Done with a conic-gradient
+     background + a small inset white plate; rotating the gradient
+     produces the marching-ants effect without needing keyframes per
+     side. */
+  #play-btn { background: var(--go); color: #000; border-color: var(--go); }
+  #play-btn:hover:not(:disabled) { filter: brightness(1.08); }
+  #play-btn.playing {
+    position: relative;
+    background: #fff; color: #000; border-color: transparent;
+    isolation: isolate;
+  }
+  /* Snake-border: four short dashed strips, one per edge, marching
+     in their own direction. Because each side gets its own
+     repeat-x/y track, the dashes track the actual rectangle of the
+     button perfectly — no diagonal cuts at the rounded corners
+     like the conic-gradient version had. The drop-shadow gives them
+     a subtle yellow halo so they read as "alive". */
+  #play-btn.playing::before {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 8px;
+    pointer-events: none;
+    z-index: -1;
+    --dash: 10px;
+    --thick: 2px;
+    /* Bright crest + darker amber valley — alternates inside the same
+       yellow family so the dashes read as a single shimmering ribbon
+       rather than dot/blank/dot. Less visual noise; more "glow". */
+    --gold-hi: #ffd84a;
+    --gold-lo: #8a6a0a;
+    background:
+      linear-gradient(90deg, var(--gold-hi) 50%, var(--gold-lo) 50%) repeat-x top    left,
+      linear-gradient(90deg, var(--gold-hi) 50%, var(--gold-lo) 50%) repeat-x bottom left,
+      linear-gradient(0deg,  var(--gold-hi) 50%, var(--gold-lo) 50%) repeat-y left   top,
+      linear-gradient(0deg,  var(--gold-hi) 50%, var(--gold-lo) 50%) repeat-y right  top;
+    background-size:
+      var(--dash) var(--thick),
+      var(--dash) var(--thick),
+      var(--thick) var(--dash),
+      var(--thick) var(--dash);
+    /* Layered drop-shadows = soft outer halo + tighter inner bloom,
+       so the marching dashes look like they're glowing rather than
+       sitting flat against the white button. */
+    filter:
+      drop-shadow(0 0 2px rgba(255, 216, 74, .9))
+      drop-shadow(0 0 6px rgba(255, 195, 0, .45));
+    animation: stopSnake 1.2s linear infinite;
+  }
+  @keyframes stopSnake {
+    to {
+      background-position:
+        var(--dash) top,
+        calc(var(--dash) * -1) bottom,
+        left calc(var(--dash) * -1),
+        right var(--dash);
+    }
+  }
+
+  /* Native <select> chrome is hard-wired to OS theme and looks "90s
+     generic" against the dark card backgrounds. Strip the system
+     widget and re-skin to match input/button: same height, same
+     border, same focus ring. Custom chevron is an inline SVG data URI
+     so there's no extra asset to ship. */
+  select { appearance: none; -webkit-appearance: none; -moz-appearance: none;
+           padding: .42rem 1.9rem .42rem .65rem; font: inherit; cursor: pointer;
+           background-color: #1a1a1a; color: var(--fg);
+           border: 1px solid #333; border-radius: 4px;
+           background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='none' stroke='%23aaa' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M1.5 1.5 L6 6 L10.5 1.5'/></svg>");
+           background-repeat: no-repeat; background-position: right .55rem center;
+           background-size: .65rem auto;
+           min-width: 9rem; max-width: 100%; }
+  select:hover:not(:disabled) { border-color: var(--hover); }
+  select:focus { outline: none; border-color: var(--hover);
+                 box-shadow: 0 0 0 2px rgba(181,146,56,.22); }
+  /* Custom dropdown: full CSS control. We keep the underlying <select>
+     in the DOM (so existing JS that touches .value/.options keeps
+     working unchanged, and screen readers still see a proper select),
+     but visually hide it and overlay this widget driven by it. Avoids
+     the browser/OS-themed popup whose highlight colour is otherwise
+     unstylable. */
+  .aceman-select-wrap { position: relative; display: inline-block; }
+  .aceman-select-native {
+    /* Visually hidden but accessibility-visible. clip-path keeps it
+       out of layout without using display:none (which would remove it
+       from the tab order / a11y tree). */
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+  .aceman-select-trigger {
+    appearance: none; font: inherit; cursor: pointer; text-align: left;
+    padding: .42rem 1.9rem .42rem .65rem;
+    background-color: #1a1a1a; color: var(--fg);
+    border: 1px solid #333; border-radius: 4px;
+    min-width: 9rem; max-width: 100%;
+    position: relative;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='none' stroke='%23aaa' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M1.5 1.5 L6 6 L10.5 1.5'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right .55rem center;
+    background-size: .65rem auto;
+  }
+  .aceman-select-trigger:hover:not(:disabled) { border-color: var(--hover); }
+  .aceman-select-trigger[aria-expanded="true"] {
+    outline: none;
+    border-color: var(--hover);
+    box-shadow: 0 0 0 2px rgba(181,146,56,.22);
+  }
+  .aceman-select-trigger:disabled { opacity: .55; cursor: not-allowed; }
+  .aceman-select-listbox {
+    position: absolute; top: calc(100% + 2px); left: 0; min-width: 100%;
+    z-index: 50;
+    background: #1a1a1a; border: 1px solid var(--hover); border-radius: 4px;
+    max-height: 18rem; overflow-y: auto;
+    padding: .25rem 0;
+    box-shadow: 0 6px 14px rgba(0,0,0,.45);
+  }
+  .aceman-select-listbox[hidden] { display: none; }
+  .aceman-select-option {
+    padding: .35rem .75rem; cursor: pointer; color: var(--fg);
+    white-space: nowrap;
+  }
+  .aceman-select-option.focused { background: var(--hover); color: #000; }
+  .aceman-select-option[aria-selected="true"] {
+    background: rgba(181,146,56,.18);
+  }
+  .aceman-select-option[aria-selected="true"].focused { background: var(--hover); color: #000; }
+  .aceman-select-option[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+  .aceman-select-group {
+    padding: .4rem .75rem .15rem;
+    font-size: .68rem; color: var(--mut);
+    text-transform: uppercase; letter-spacing: .05em; font-weight: 600;
+  }
+  select:disabled { opacity: .5; cursor: not-allowed;
+                    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='none' stroke='%23555' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M1.5 1.5 L6 6 L10.5 1.5'/></svg>"); }
+  /* The <option> popup is rendered by the OS; we can only nudge it on
+     some browsers (Firefox/Chromium honour these). Worth setting so the
+     dropped list at least doesn't flash a white panel on dark themes. */
+  select option { background: #1a1a1a; color: var(--fg); }
+
+  /* A two-up "field" row: label + control on the same baseline.
+     Used for the Player select and the Browser select so both line
+     up consistently regardless of label length. */
+  .field { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+           margin: .35rem 0; }
+  .field-label { color: var(--mut); font-size: .82rem; min-width: 5.5rem; }
+  .field-suffix { color: var(--mut); font-size: .78rem; }
+  /* Player card's first field ("Play in") is centered horizontally so
+     the label + dropdown sit together in the middle of the card,
+     rather than left-aligned with empty space on the right. When the
+     Move button appears the whole row stays centered as a group —
+     `justify-content: center` does exactly that for flex children. */
+  /* Player card's first row ("Play in" + dropdown + optional Move) is
+     centered as a group — `justify-content: center` keeps the
+     dropdown horizontally in the middle of the card, and when Move
+     appears the whole trio re-centers. The default 5.5rem
+     `min-width` on field-label is meant for left-aligned label
+     columns; drop it just for this row so the label hugs the
+     dropdown instead of pushing it off-center. */
+  .has-card-label .field:first-of-type { justify-content: center; }
+  .has-card-label .field:first-of-type .field-label { min-width: auto; }
+  .row { display: flex; gap: .5rem; align-items: center; margin: .5rem 0; }
+  .row input { flex: 1; }
+  .card { border: 1px solid #333; border-radius: 6px; padding: .75rem 1rem; margin: 1rem 0;
+          background: #181818; }
+  /* Unified small-caps status look used by Engine status, image-status,
+     desktop-status — and inherited by the LIVE pip and storage badge.
+     Uppercase + letter-spacing makes them visually consistent even
+     though each lives next to a different header. */
+  .status {
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--mut);
+  }
+  .status.ok { color: #6c6; } .status.bad { color: var(--err); }
+  .err { color: var(--err); margin: .5rem 0; }
+  /* ACEMAN wordmark + optional glow. `.glow` class is toggled by the
+     little ✨ button next to it; preference persists in localStorage. */
+  .aceman {
+    font: 900 64px/1 "Helvetica Neue", Arial, sans-serif;
+    letter-spacing: .04em;
+    color: #39FF6A;
+    cursor: pointer;
+    user-select: none;
+  }
+  .aceman.glow {
+    animation: acemanGlow 4.5s ease-in-out infinite;
+  }
+  @keyframes acemanGlow {
+    0%, 100% { text-shadow: 0 0 5px rgba(57,255,106,.55),
+                            0 0 11px rgba(57,255,106,.33); }
+    50%      { text-shadow: 0 0 8px rgba(57,255,106,.85),
+                            0 0 18px rgba(57,255,106,.5),
+                            0 0 31px rgba(57,255,106,.28); }
+  }
+
+  /* Visual hint that a label carries a hover tooltip.
+     Dashed underline + help cursor is the long-standing web
+     convention; we use a low-contrast color and `decoration-style:
+     dotted` (slightly lighter than dashed) so it doesn't compete with
+     real underlined links. Browsers render the native title= bubble on
+     hover — no JS, no extra DOM. */
+  .has-tooltip {
+    text-decoration: underline dotted var(--mut);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+    cursor: help;
+  }
+
+  /* Favourites storage badge: same micro-cap typography as .status.ok,
+     no chip background — matches "RUNNING" / "INSTALLED" elsewhere. */
+  .badge {
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: #6c6;
+    margin-left: .5rem;
+  }
+
+  /* Two-column on ultra-wide; stack on narrow. Right column comes first in
+     the DOM so on phones/laptops you see Engine/Player/Play above the long
+     favourites list. Each column is a flex stack with its own gap so both
+     columns line up at the same top edge — relying on per-card margins
+     leaves the second column visually offset. */
+  .main { display: grid; gap: 1rem; grid-template-columns: 1fr;
+          grid-template-areas: "right" "favs"; }
+  .right-col, .favs-col { display: flex; flex-direction: column; gap: 1rem;
+                          min-width: 0; }
+  .right-col .card, .favs-col .card { margin: 0; }
+  /* Three-up row across the top of the right column: Engine / Playback /
+     Play. Stacks on narrow viewports; goes side-by-side on wide ones.
+     min-width: 0 inside lets a card's text wrap rather than blow out
+     the grid. */
+  .top-row { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+  .top-row > .card { min-width: 0; }
+  /* The Play card has less content than its row neighbours, so when the
+     row stretches them to equal height it sat with empty space below the
+     input. Make it a flex column centered vertically so the row of
+     button+input floats in the middle of whatever height the tallest
+     sibling forces. */
+  #play-card { display: flex; flex-direction: column; justify-content: center; }
+
+  /* Corner label: a small "fieldset legend"-style tag in the top-left
+     of a card. Sits half-overlapping the card border so it reads as a
+     proper title rather than a row of body text. Card needs
+     position:relative + a bit of top padding so the absolutely-
+     positioned label has room above its first child. */
+  .card.has-card-label { position: relative; padding-top: 1.4rem; }
+  .card-label {
+    position: absolute;
+    top: -.55rem;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: .1rem .55rem;
+    background: var(--bg);
+    border: 1px solid #444;
+    border-radius: 999px;
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: #ddd;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+  /* .status / .badge inside a card-label keep their own uppercase
+     typography — they're meant to read as small-cap state labels next
+     to the card title, same family as the LIVE pip on Playback. */
+
+  /* "Live" pip next to the PLAYBACK corner label when a stream is
+     actually live. Green dot + subtle pulse so the eye picks it up
+     without making the whole header shout. */
+  .live-dot {
+    color: #4caf50;
+    font-weight: 700;
+    font-size: .7rem;
+    margin-left: .35rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .live-dot::before {
+    content: "●";
+    margin-right: .2rem;
+    animation: live-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes live-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: .35; }
+  }
+
+  /* Icon-only buttons (▶ in fav/search rows). Slightly larger glyph,
+     fixed footprint so adjacent rows align even with one-character text. */
+  button.icon-btn {
+    font-size: 1rem;
+    line-height: 1;
+    padding: .3rem .55rem;
+    min-width: 2rem;
+  }
+
+  @media (min-width: 1100px) {
+    /* No align-items override here — grid items default to `stretch`,
+       which gives all three cards the same height (the tallest one
+       wins). The earlier `align-items: start` left them as ragged
+       shorter pills next to a tall card. */
+    /* Top row is Player + Engine; Playback (with its long content-id
+       input and video) now lives full-width below. */
+    .top-row { grid-template-columns: 1fr 1fr; }
+  }
+  .right-col { grid-area: right; }
+  .favs-col  { grid-area: favs; }
+  @media (min-width: 1400px) {
+    body { max-width: 1700px; }
+    .main { grid-template-columns: minmax(360px, 1fr) 2fr;
+            grid-template-areas: "favs right"; align-items: start; }
+  }
+
+  /* Favourites row layout */
+  .fav { display: flex; align-items: center; gap: .35rem;
+         padding: .35rem .25rem; border-bottom: 1px solid #222; }
+  .fav:last-child { border-bottom: none; }
+  .fav-name-wrap { flex: 1; min-width: 0; display: flex; align-items: baseline;
+                   gap: .5rem; }
+  .fav-name { cursor: pointer; overflow: hidden; text-overflow: ellipsis;
+              white-space: nowrap; }
+  .fav-name:hover { color: var(--acc); }
+  .fav-last { color: var(--mut); font-size: .72rem; white-space: nowrap; }
+  .fav-edit-input { flex: 1; padding: .2rem .4rem; font: inherit;
+                    background: #222; color: var(--fg);
+                    border: 1px solid var(--acc); border-radius: 3px; }
+
+  /* Setup & tools card: structured rows + danger zone */
+  .setup-row { padding: .6rem 0; border-top: 1px solid #222; }
+  .setup-row:first-of-type { border-top: none; padding-top: .4rem; }
+  /* Engine image / App launcher / Lifecycle go side-by-side on wide
+     screens; stack on narrow. Inside the grid the horizontal dividers
+     would be visual noise — the columns separate the rows already.
+     Subtle vertical separators on wide screens stand in for them. */
+  .setup-grid { display: grid; gap: .6rem 1.2rem; grid-template-columns: 1fr; }
+  .setup-grid .setup-row { border-top: none; padding-top: .4rem; }
+  @media (min-width: 900px) {
+    .setup-grid { grid-template-columns: 1fr 1fr 1fr; align-items: start; }
+    .setup-grid .setup-row + .setup-row { border-left: 1px solid #222; padding-left: 1.2rem; }
+  }
+  .setup-row-head { display: flex; justify-content: space-between;
+                    align-items: center; margin-bottom: .35rem; }
+  .danger-zone { border-top: 1px dashed #553; margin-top: .6rem; }
+
+  /* Logs as tabs: three buttons across the top, a single full-width
+     viewer below. Only one tab can be active at a time — clicking the
+     active tab closes the viewer; clicking a different tab switches
+     the stream without closing. */
+  .logs-tabs { display: grid; gap: .5rem; grid-template-columns: 1fr; }
+  @media (min-width: 900px) {
+    .logs-tabs { grid-template-columns: 1fr 1fr 1fr; }
+  }
+  .logs-tab {
+    text-align: left;
+    background: transparent;
+    border: 1px solid #2a2a2a;
+    border-radius: 4px;
+    padding: .45rem .65rem;
+    cursor: pointer;
+    color: inherit;
+    display: flex; justify-content: space-between; align-items: center; gap: .5rem;
+  }
+  .logs-tab:hover { border-color: var(--hover); }
+  .logs-tab.active { border-color: var(--hover); background: rgba(181, 146, 56, .1); }
+  /* Per-tab pause/play control. Hidden unless the tab is active.
+     Neutral monochrome so it doesn't compete with the tab title or the
+     mustard active state. */
+  .logs-toggle {
+    display: none;
+    font-size: .85rem; line-height: 1;
+    padding: 0 .35rem;
+    color: #ddd;
+    border: 1px solid #444; border-radius: 3px;
+    background: #1a1a1a;
+  }
+  .logs-tab.active .logs-toggle { display: inline-block; }
+  .logs-toggle:hover { border-color: var(--hover); }
+  #logs-viewer {
+    background: #0a0a0a; color: #bbb;
+    border: 1px solid #222; padding: .6rem; margin: .5rem 0 0;
+    font: .72rem ui-monospace, monospace;
+    max-height: 24em; overflow: auto;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  .image-tag { font-family: ui-monospace, monospace; font-size: .75rem;
+               color: var(--mut); margin-left: .35rem; }
+  #image-log { max-height: 240px; overflow: auto; background: #0a0a0a;
+               border: 1px solid #222; border-radius: 4px;
+               padding: .5rem .6rem; font-size: .72rem;
+               font-family: ui-monospace, monospace; white-space: pre-wrap;
+               word-break: break-all; margin-top: .5rem; }
+
+  /* Tooltip-style hint shown next to disabled buttons */
+  .gate-hint { color: var(--mut); font-size: .8rem; margin-left: .5rem; }
+  .gate-hint.warn { color: var(--err); }
+
+  /* Now-playing channel label — lives inside the Playback card-label.
+     The card-label is absolutely positioned at the top edge, so cap it
+     to the card width and let long names wrap rather than overflow. */
+  #playback-label { max-width: calc(100% - 1.5rem); white-space: normal;
+                    text-align: center; }
+  #playback-title .sub { color: var(--mut); font-weight: normal;
+                         margin-left: .4rem; text-transform: none; }
+
+  /* Modal: install-options dialog */
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.65);
+                    display: flex; align-items: center; justify-content: center;
+                    z-index: 100; padding: 1rem; }
+  .modal-card { background: #181818; border: 1px solid #444; border-radius: 8px;
+                padding: 1.25rem 1.5rem; max-width: 540px; width: 100%;
+                box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+  .modal-card h3 { margin: 0 0 .5rem; font-size: 1.05rem; }
+  .modal-card p { margin: .25rem 0 1rem; color: var(--mut); font-size: .9rem; }
+  .install-opt { margin: .75rem 0; }
+  .install-opt button { display: block; width: 100%; text-align: left;
+                        padding: .55rem .8rem; }
+  .install-opt .opt-sub { margin: .25rem .2rem 0; color: var(--mut);
+                          font-size: .78rem; }
+
+  /* Modal: favourite-name picker */
+  .favname-opt { display: flex; align-items: center; gap: .5rem;
+                 padding: .35rem .2rem; cursor: pointer; font-size: .9rem; }
+  .favname-opt input[type="radio"] { margin: 0; }
+  .favname-kind { color: var(--mut); font-size: .78rem;
+                  text-transform: uppercase; letter-spacing: .04em;
+                  margin-right: .25rem; }
+  .favname-custom-row { display: flex; align-items: center; gap: .5rem;
+                        padding: .35rem .2rem; margin-top: .15rem; }
+  #favname-custom-input { flex: 1; box-sizing: border-box;
+                          padding: .4rem .55rem; }
+  .favname-actions { display: flex; justify-content: flex-end; gap: .5rem;
+                     margin-top: 1rem; }
+  .favname-actions button { padding: .4rem .9rem; }
+
+  /* Search + pagination */
+  #fav-search { font-size: .9rem; }
+  .pager { display: flex; justify-content: space-between; align-items: center;
+           font-size: .8rem; margin-top: .5rem; }
+  .pager button { padding: .25rem .6rem; font-size: .85rem; }

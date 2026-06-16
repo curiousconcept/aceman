@@ -1,0 +1,848 @@
+#!/usr/bin/env bash
+# aceman — start a stream via a running acestream engine, play it in mpv,
+# and tear down the engine session cleanly on exit.
+#
+# Why this exists: the engine's HTTP API gives back a playback_url (for the
+# player) and a command_url (to stop the session). If you just kill the
+# player, the engine keeps the session alive — still participating in the
+# swarm and using bandwidth — until its idle timeout. aceman hits
+# command_url with method=stop on exit so the session ends with the player.
+#
+# Usage:
+#   aceman <arg>                       # play; <arg> is a 40-hex content id,
+#                                        # acestream://<id>, or a saved fav name
+#   aceman --url <transport_url>       # play a transport URL (.acelive, ...)
+#   aceman --infohash <infohash>       # play a 40-hex BT infohash
+#
+#   aceman fav list                    # list saved favourites
+#   aceman fav rm <name>               # delete a favourite (alias: delete)
+#   aceman fav rename <old> <new>      # rename a saved favourite
+#
+#   aceman engine start [--ram NG] [--cache NG] [--port N]
+#   aceman engine stop
+#   aceman engine restart [--ram NG] [--cache NG] [--port N]
+#   aceman engine status               # container + API + memory + cache
+#
+# Favourites live in $XDG_CONFIG_HOME/aceman/favorites (default
+# ~/.config/aceman/favorites). One entry per line, tab-separated:
+#     name<TAB>id
+# Blank lines and lines starting with '#' are ignored. 'id' may be a 40-hex
+# content id or an acestream://<id> URI.
+#
+# Requires: a running engine reachable at $ACE_ENGINE (default
+# http://127.0.0.1:6878), plus curl, jq, and a player on the host. Default
+# player is vlc; set ACE_PLAYER=mpv (or any other CLI player that takes a
+# URL as a positional arg) to override. The player is auto-detected from
+# $PATH, the system package manager, or Flatpak — in that order.
+#
+# Input validation: the engine's JSON response is treated as untrusted
+# input. It controls URLs we hand to the player and curl. We harden by
+# (1) forcing the URL scheme to http and the authority to the engine
+# endpoint we configured, (2) rejecting control bytes, (3) using '--' so
+# the player won't parse the URL as a flag.
+
+set -euo pipefail
+
+ENGINE="${ACE_ENGINE:-http://127.0.0.1:6878}"
+ACE_NAME="${ACE_NAME:-ace}"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+
+# Player resolution order:
+#   1. $ACE_PLAYER + $ACE_PLAYER_SOURCE  — explicit env override
+#   2. config.json:default_player + :default_player_source — web UI
+#   3. "vlc" with no source preference — final fallback
+# jq is already a hard requirement of the script, so reading the json is
+# free. Empty / missing values fall through silently.
+# PLAYER_SOURCE is "system" / "flatpak" / "" (no preference); the
+# resolve_player function below honors it when it can.
+_resolve_cfg_string() {
+    # $1 = json key. Echoes value or returns 1 if absent / empty.
+    local cfg="${XDG_CONFIG_HOME:-$HOME/.config}/aceman/config.json"
+    [ -r "$cfg" ] || return 1
+    jq -r ".${1} // \"\"" "$cfg" 2>/dev/null | grep -v '^$' || return 1
+}
+if [ -n "${ACE_PLAYER:-}" ]; then
+    PLAYER="$ACE_PLAYER"
+    PLAYER_SOURCE="${ACE_PLAYER_SOURCE:-}"
+elif PLAYER="$(_resolve_cfg_string default_player)"; then
+    PLAYER_SOURCE="$(_resolve_cfg_string default_player_source || true)"
+else
+    PLAYER="vlc"
+    PLAYER_SOURCE=""
+fi
+unset -f _resolve_cfg_string
+FAV_FILE="${ACE_FAVORITES:-${XDG_CONFIG_HOME:-$HOME/.config}/aceman/favorites}"
+
+# Single-active-session machinery. At most one playing aceman per user;
+# a second launch (e.g. another acestream:// click in the browser) sends
+# SIGTERM to the previous instance and waits briefly for it to release
+# the engine session before taking over. Files live under XDG_RUNTIME_DIR
+# (tmpfs, wiped on logout); fall back to /tmp keyed on UID so two users
+# on the same host don't share a marker.
+ACE_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/aceman-$(id -u 2>/dev/null || echo 0)}"
+ACE_LOCK_FILE="$ACE_RUNTIME_DIR/aceman.lock"
+ACE_PID_FILE="$ACE_RUNTIME_DIR/aceman.active.pid"
+# Initialised early so the EXIT trap (which can fire any time after it's
+# installed) reads from a known state even if we exit before launch.
+PLAYER_PID=""
+
+# Look up a favourite by name. Prints the bare 40-hex content id to stdout,
+# or exits via die(). Tabs separate columns; blank lines and '#' comments
+# are skipped. Matching is case-insensitive and tolerant of extra spaces so
+# 'sky sports' finds an entry saved as 'Sky  Sports'. Exact (normalised)
+# matches win over substring matches; ambiguous substring matches error
+# with the candidate list so the user can pick.
+fav_lookup() {
+    local want="$1" name id rest norm_want norm_name
+    [ -r "$FAV_FILE" ] || die "no favourites file at $FAV_FILE
+make one with: mkdir -p $(dirname "$FAV_FILE") && touch $FAV_FILE"
+    # Normalise: lowercase + collapse internal whitespace + trim.
+    norm_want="$(printf %s "$want" | tr '[:upper:]' '[:lower:]' \
+                  | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')"
+
+    local exact_id="" subs_names=() subs_ids=()
+    while IFS=$'\t' read -r name id rest; do
+        [ -z "${name:-}" ] && continue
+        [ "${name:0:1}" = "#" ] && continue
+        norm_name="$(printf %s "$name" | tr '[:upper:]' '[:lower:]' \
+                      | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')"
+        id="${id#acestream://}"
+        [[ "$id" =~ ^[A-Fa-f0-9]{40}$ ]] \
+            || die "favourite '$name' has invalid id: $id"
+        if [ "$norm_name" = "$norm_want" ] && [ -z "$exact_id" ]; then
+            exact_id="$id"
+        elif [[ "$norm_name" == *"$norm_want"* ]]; then
+            subs_names+=("$name"); subs_ids+=("$id")
+        fi
+    done < "$FAV_FILE"
+
+    if [ -n "$exact_id" ]; then
+        printf '%s\n' "$exact_id"; return 0
+    fi
+    if [ "${#subs_ids[@]}" -eq 1 ]; then
+        printf '%s\n' "${subs_ids[0]}"; return 0
+    fi
+    if [ "${#subs_ids[@]}" -gt 1 ]; then
+        {
+            echo "favourite '$want' is ambiguous — matches ${#subs_ids[@]} entries:"
+            printf '  %s\n' "${subs_names[@]}"
+            echo "be more specific, or run: $0 --list"
+        } >&2
+        exit 1
+    fi
+    {
+        echo "favourite '$want' not found in $FAV_FILE"
+        echo "available:"
+        fav_list 2>/dev/null | sed 's/^/  /' || echo "  (none yet)"
+    } >&2
+    exit 1
+}
+fav_list() {
+    [ -r "$FAV_FILE" ] || die "no favourites file at $FAV_FILE"
+    local name id rest
+    while IFS=$'\t' read -r name id rest; do
+        [ -z "${name:-}" ] && continue
+        [ "${name:0:1}" = "#" ] && continue
+        printf '%-30s %s\n' "$name" "$id"
+    done < "$FAV_FILE"
+}
+
+# Print the favourite name for $CID on stdout if one exists, exit 0; else
+# exit 1. Used both as a boolean (cid already saved?) and to surface the
+# existing name in user-facing "skipping save" messages.
+fav_name_by_cid() {
+    [ -n "$CID" ] || return 1
+    [ -r "$FAV_FILE" ] || return 1
+    local name id rest
+    while IFS=$'\t' read -r name id rest; do
+        [ -z "${name:-}" ] && continue
+        [ "${name:0:1}" = "#" ] && continue
+        id="${id#acestream://}"
+        if [ "${id,,}" = "${CID,,}" ]; then
+            printf '%s\n' "$name"
+            return 0
+        fi
+    done < "$FAV_FILE"
+    return 1
+}
+
+# Enforce the same name policy on every write path (save prompt, --rename).
+# Mirrors the web frontend's NAME_OK: 1-128 chars, no tabs (column
+# separator), no ASCII control bytes (cursor / scroll-back manipulation),
+# no leading '#' (would be reparsed as a comment on next read).
+validate_fav_name() {
+    local name="$1"
+    [ -n "$name" ] || die "name required"
+    [ "${#name}" -le 128 ] || die "name too long (max 128 chars)"
+    if [[ "$name" == *$'\t'* ]]; then
+        die "name must not contain tabs"
+    fi
+    if LC_ALL=C grep -q '[[:cntrl:]]' <<<"$name"; then
+        die "name must not contain control characters"
+    fi
+    if [ "${name:0:1}" = "#" ]; then
+        die "name must not start with '#'"
+    fi
+}
+
+# Delete a favourite by exact name. awk lets us preserve blank lines and
+# '#' comment rows verbatim while filtering only the matching data row.
+fav_delete() {
+    local target="$1"
+    [ -n "$target" ] || die "missing name after --rm"
+    [ -f "$FAV_FILE" ] || die "no favourites file at $FAV_FILE"
+    awk -F '\t' -v t="$target" '
+        BEGIN { f = 0 }
+        $0 != "" && $1 !~ /^#/ && $1 == t { f = 1 }
+        END { exit !f }
+    ' "$FAV_FILE" || die "favourite '$target' not found"
+    local tmp
+    tmp="$(mktemp -- "${FAV_FILE}.XXXXXX")"
+    if ! awk -F '\t' -v t="$target" '
+        $0 == "" || $1 ~ /^#/ { print; next }
+        $1 == t { next }
+        { print }
+    ' "$FAV_FILE" > "$tmp"; then
+        rm -f -- "$tmp"
+        die "failed to rewrite favourites file"
+    fi
+    mv -- "$tmp" "$FAV_FILE"
+    echo "deleted: $target"
+}
+
+# Rename an existing favourite. Old must exist; new must pass validation
+# and not collide with a *different* existing entry.
+fav_rename() {
+    local old="$1" new="$2"
+    [ -n "$old" ] && [ -n "$new" ] || die "usage: aceman --rename <old> <new>"
+    validate_fav_name "$new"
+    [ -f "$FAV_FILE" ] || die "no favourites file at $FAV_FILE"
+    awk -F '\t' -v t="$old" '
+        BEGIN { f = 0 }
+        $0 != "" && $1 !~ /^#/ && $1 == t { f = 1 }
+        END { exit !f }
+    ' "$FAV_FILE" || die "favourite '$old' not found"
+    if [ "$old" = "$new" ]; then
+        echo "name unchanged"
+        return 0
+    fi
+    if awk -F '\t' -v t="$new" '
+        BEGIN { c = 0 }
+        $0 != "" && $1 !~ /^#/ && $1 == t { c = 1 }
+        END { exit !c }
+    ' "$FAV_FILE"; then
+        die "name '$new' is already in use"
+    fi
+    local tmp
+    tmp="$(mktemp -- "${FAV_FILE}.XXXXXX")"
+    if ! awk -F '\t' -v OFS='\t' -v o="$old" -v n="$new" '
+        $0 == "" || $1 ~ /^#/ { print; next }
+        $1 == o { $1 = n; print; next }
+        { print }
+    ' "$FAV_FILE" > "$tmp"; then
+        rm -f -- "$tmp"
+        die "failed to rewrite favourites file"
+    fi
+    mv -- "$tmp" "$FAV_FILE"
+    echo "renamed: $old -> $new"
+}
+
+die() { echo "aceman: $*" >&2; exit 1; }
+
+# Take ownership of the single-active-session marker. If another aceman
+# is already playing, signal it to stop and wait for it to release; only
+# then write our own PID into the marker file. Holds an exclusive flock
+# only across this transition (not for the lifetime of the session) so
+# multiple successive launches each see a consistent view of "who's
+# currently playing" without blocking the session itself.
+acquire_active_session() {
+    mkdir -p "$ACE_RUNTIME_DIR"
+    # fd 9 → lock file. flock(1) is in util-linux on every modern distro
+    # but degrade gracefully if absent (rare): we still write the PID
+    # file but lose the atomicity guarantee against a parallel launch.
+    exec 9>"$ACE_LOCK_FILE"
+    if command -v flock >/dev/null; then
+        flock 9
+    fi
+    if [ -r "$ACE_PID_FILE" ]; then
+        local old_pid
+        old_pid="$(cat "$ACE_PID_FILE" 2>/dev/null)"
+        # Defensive checks: a real integer, not us, still alive, AND the
+        # process actually looks like another aceman — guards against
+        # PID reuse where the slot got recycled to some unrelated process
+        # after the previous aceman exited without removing its file.
+        if [ -n "$old_pid" ] \
+           && [ "$old_pid" -eq "$old_pid" ] 2>/dev/null \
+           && [ "$old_pid" != "$$" ] \
+           && kill -0 "$old_pid" 2>/dev/null \
+           && grep -aq 'aceman' "/proc/$old_pid/cmdline" 2>/dev/null; then
+            echo "aceman: stopping previous instance (pid $old_pid)..." >&2
+            kill -TERM "$old_pid" 2>/dev/null || true
+            # Poll up to ~5 s. Old script's own trap kills its player and
+            # hits command_url?method=stop before exiting; escalate to
+            # KILL only if it ignored TERM the whole time.
+            local n=0
+            while [ "$n" -lt 50 ] && kill -0 "$old_pid" 2>/dev/null; do
+                sleep 0.1
+                n=$((n + 1))
+            done
+            if kill -0 "$old_pid" 2>/dev/null; then
+                kill -KILL "$old_pid" 2>/dev/null || true
+            fi
+        fi
+    fi
+    echo "$$" > "$ACE_PID_FILE"
+    if command -v flock >/dev/null; then
+        flock -u 9
+    fi
+    exec 9>&-
+}
+
+command -v curl >/dev/null || die "curl is required"
+command -v jq   >/dev/null || die "jq is required"
+
+# ---- engine container controls -----------------------------------------
+
+# True iff a podman container with our exact name is currently running.
+engine_running() {
+    command -v podman >/dev/null || return 1
+    [ -n "$(podman ps --filter "name=^${ACE_NAME}$" \
+            --format '{{.Names}}' 2>/dev/null)" ]
+}
+
+# True iff the engine's HTTP API answers.
+engine_up() {
+    curl -fsS --max-time 5 "$ENGINE/webui/api/service?method=get_version" \
+        >/dev/null 2>&1
+}
+
+# Accept podman-style sizes ('3g' / '512m' / '1024k' / bare bytes). Fails
+# clearly here so the user doesn't get an opaque podman error three layers
+# down. $2 is a label used in the error message ("ram", "cache", ...).
+validate_size() {
+    [[ "$1" =~ ^[0-9]+[gGmMkK]?$ ]] \
+        || die "$2 must look like 3g / 512m / 1024k / bare bytes (got: $1)"
+}
+
+# Invoke run-container.sh in detached mode and poll until the engine
+# answers. Caller checks podman exists and the container isn't already up.
+# ACE_MEMORY / ACE_CACHE_SIZE / ACE_API_PORT in env get forwarded by the
+# launcher.
+RUN_SH="$SCRIPT_DIR/container/run-container.sh"
+start_engine_now() {
+    command -v podman >/dev/null || die "podman not installed"
+    [ -x "$RUN_SH" ] || die "$RUN_SH missing"
+    ACE_DETACH=1 ACE_NAME="$ACE_NAME" "$RUN_SH" >/dev/null \
+        || die "failed to start engine via $RUN_SH"
+    for _ in $(seq 1 30); do
+        engine_up && return 0
+        sleep 1
+    done
+    die "engine started but never answered at $ENGINE"
+}
+
+engine_cmd_start() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --ram|--memory)
+                [ $# -ge 2 ] || die "missing value after $1"
+                validate_size "$2" "ram"
+                export ACE_MEMORY="$2"; shift 2 ;;
+            --cache)
+                [ $# -ge 2 ] || die "missing value after $1"
+                validate_size "$2" "cache"
+                export ACE_CACHE_SIZE="$2"; shift 2 ;;
+            --port)
+                [ $# -ge 2 ] || die "missing value after $1"
+                [[ "$2" =~ ^[0-9]+$ ]] || die "port must be a number"
+                [ "$2" -ge 1 ] && [ "$2" -le 65535 ] \
+                    || die "port out of range (1-65535)"
+                export ACE_PORT="$2"; shift 2 ;;
+            *) die "unknown option to engine start: $1" ;;
+        esac
+    done
+    if engine_running; then
+        echo "aceman: engine container '$ACE_NAME' is already running"
+        return 0
+    fi
+    echo "aceman: starting engine container '$ACE_NAME'..."
+    start_engine_now
+    echo "aceman: engine ready at $ENGINE"
+}
+
+engine_cmd_stop() {
+    [ $# -eq 0 ] || die "engine stop takes no arguments"
+    if ! engine_running; then
+        echo "aceman: engine not running"
+        return 0
+    fi
+    echo "aceman: stopping engine container '$ACE_NAME'..."
+    podman stop -t 5 "$ACE_NAME" >/dev/null || die "podman stop failed"
+    echo "aceman: engine stopped"
+}
+
+engine_cmd_restart() {
+    if engine_running; then
+        echo "aceman: stopping engine container '$ACE_NAME'..."
+        podman stop -t 5 "$ACE_NAME" >/dev/null || die "podman stop failed"
+    fi
+    engine_cmd_start "$@"
+}
+
+engine_cmd_status() {
+    [ $# -eq 0 ] || die "engine status takes no arguments"
+    if engine_running; then
+        echo "container: running ($ACE_NAME)"
+    else
+        echo "container: not running"
+    fi
+    if engine_up; then
+        local v
+        v="$(curl -fsS --max-time 3 \
+                  "$ENGINE/webui/api/service?method=get_version" 2>/dev/null \
+             | jq -r '.result.version // "?"' 2>/dev/null)"
+        echo "api:       up at $ENGINE  (version ${v:-?})"
+    else
+        echo "api:       not responding at $ENGINE"
+    fi
+    if engine_running; then
+        # Best-effort: podman stats/exec may fail under odd permission
+        # configs; we just skip the line in that case rather than abort.
+        local mem cache
+        mem="$(podman stats --no-stream \
+                --format '{{.MemUsage}} ({{.MemPerc}})' "$ACE_NAME" \
+              2>/dev/null | tr -d '\n')"
+        [ -n "$mem" ] && echo "memory:    $mem"
+        cache="$(podman exec "$ACE_NAME" \
+                df -h /home/ace/.ACEStream 2>/dev/null \
+                | awk 'NR==2 {printf "%s used / %s (%s full)", $3, $2, $5}')"
+        [ -n "$cache" ] && echo "cache:     $cache"
+    fi
+}
+
+# ---- subcommand dispatchers --------------------------------------------
+
+fav_dispatch() {
+    local sub="${1:-}"
+    [ $# -gt 0 ] && shift
+    case "$sub" in
+        ""|-h|--help)
+            cat >&2 <<'EOF'
+aceman fav — manage saved favourites
+
+Usage:
+  aceman fav list                  list saved favourites
+  aceman fav rm <name>             delete a favourite (alias: delete)
+  aceman fav rename <old> <new>    rename a saved favourite
+
+Play a saved favourite with:
+  aceman <name>                    e.g. aceman "Sky Sports"
+EOF
+            ;;
+        list)
+            [ $# -eq 0 ] || die "fav list takes no arguments"
+            fav_list ;;
+        rm|delete)
+            [ $# -ge 1 ] || die "usage: aceman fav $sub <name>"
+            # Join trailing words so multi-word names work without quoting.
+            fav_delete "$*" ;;
+        rename)
+            [ $# -eq 2 ] || die "usage: aceman fav rename <old> <new>
+quote names that contain spaces, e.g. fav rename 'Sky Sports' 'BBC Sport'"
+            fav_rename "$1" "$2" ;;
+        *) die "unknown fav subcommand: $sub  (try: list | rm | rename)" ;;
+    esac
+}
+
+engine_dispatch() {
+    local sub="${1:-}"
+    [ $# -gt 0 ] && shift
+    case "$sub" in
+        ""|-h|--help)
+            cat >&2 <<'EOF'
+aceman engine — control the acestream container
+
+Usage:
+  aceman engine start [--ram NG] [--cache NG] [--port N]
+  aceman engine stop
+  aceman engine restart [--ram NG] [--cache NG] [--port N]
+  aceman engine status
+EOF
+            ;;
+        start)   engine_cmd_start   "$@" ;;
+        stop)    engine_cmd_stop    "$@" ;;
+        restart) engine_cmd_restart "$@" ;;
+        status)  engine_cmd_status  "$@" ;;
+        *) die "unknown engine subcommand: $sub  (try: start | stop | restart | status)" ;;
+    esac
+}
+
+# Resolve $PLAYER to an argv we can exec. Look on $PATH first (works on
+# Silverblue layered packages and toolbox), then fall back to a Flatpak app
+# id for the well-known players. This deliberately avoids sourcing ~/.bashrc
+# or relying on shell aliases — those only exist in interactive shells and
+# wouldn't apply when aceman is invoked from a launcher or systemd unit.
+declare -a PLAYER_CMD
+flatpak_has() {
+    command -v flatpak >/dev/null || return 1
+    flatpak info "$1" >/dev/null 2>&1
+}
+# Find an executable owned by an installed system package. Covers the rare
+# case where the binary isn't on $PATH (e.g. /usr/libexec, or a Silverblue
+# layered package in a fresh shell) but the package itself is installed.
+# Supports rpm (Fedora/RHEL/openSUSE) and dpkg (Debian/Ubuntu).
+pkg_bin() {
+    local name="$1"
+    if command -v rpm >/dev/null && rpm -q "$name" >/dev/null 2>&1; then
+        rpm -ql "$name" 2>/dev/null \
+            | awk -v n="$name" '$0 ~ "/bin/"n"$" {print; exit}'
+        return 0
+    fi
+    if command -v dpkg-query >/dev/null \
+       && dpkg-query -W -f='${Status}' "$name" 2>/dev/null \
+            | grep -q '^install ok installed$'; then
+        dpkg-query -L "$name" 2>/dev/null \
+            | awk -v n="$name" '$0 ~ "/bin/"n"$" {print; exit}'
+        return 0
+    fi
+    return 1
+}
+# Pick the install hint that matches whatever package manager is around so
+# the error tells Ubuntu users 'apt' and Fedora users 'dnf'.
+install_hint_for() {
+    local name="$1"
+    if   command -v rpm-ostree >/dev/null; then echo "sudo rpm-ostree install $name"
+    elif command -v dnf       >/dev/null; then echo "sudo dnf install $name"
+    elif command -v apt       >/dev/null; then echo "sudo apt install $name"
+    elif command -v zypper    >/dev/null; then echo "sudo zypper install $name"
+    elif command -v pacman    >/dev/null; then echo "sudo pacman -S $name"
+    else echo "install '$name' via your system package manager"; fi
+}
+resolve_player() {
+    local name="$1" prefer_source="${2:-}" flatpak_id="" pkgbin=""
+    case "$name" in
+        vlc) flatpak_id="org.videolan.VLC" ;;
+        mpv) flatpak_id="io.mpv.Mpv" ;;
+    esac
+    # When the user expressed a source preference (web UI's dropdown
+    # distinguishes system vs Flatpak when both are installed), honor it
+    # before the generic fallback order. Fall through silently if the
+    # preferred variant isn't actually installed — the web UI validates
+    # against the broker's live list, so this only kicks in for edge
+    # cases like packages installed/removed between the dropdown render
+    # and the click.
+    case "$prefer_source" in
+        flatpak)
+            if [ -n "$flatpak_id" ] && flatpak_has "$flatpak_id"; then
+                PLAYER_CMD=(flatpak run --filesystem=host-os "$flatpak_id")
+                return
+            fi
+            ;;
+        system)
+            if command -v "$name" >/dev/null; then
+                PLAYER_CMD=("$name")
+                return
+            elif pkgbin="$(pkg_bin "$name")" \
+                 && [ -n "$pkgbin" ] && [ -x "$pkgbin" ]; then
+                PLAYER_CMD=("$pkgbin")
+                return
+            fi
+            ;;
+    esac
+    # No preference (or preferred source not present) → system command
+    # first, then dpkg's bin lookup, then Flatpak.
+    if command -v "$name" >/dev/null; then
+        PLAYER_CMD=("$name")
+    elif pkgbin="$(pkg_bin "$name")" && [ -n "$pkgbin" ] && [ -x "$pkgbin" ]; then
+        PLAYER_CMD=("$pkgbin")
+    elif [ -n "$flatpak_id" ] && flatpak_has "$flatpak_id"; then
+        PLAYER_CMD=(flatpak run --filesystem=host-os "$flatpak_id")
+    else
+        local sys_hint flat_hint=""
+        sys_hint="$(install_hint_for "$name")"
+        [ -n "$flatpak_id" ] && flat_hint=", or 'flatpak install $flatpak_id'"
+        die "player '$name' not found — try: $sys_hint$flat_hint (or set ACE_PLAYER)"
+    fi
+}
+resolve_player "$PLAYER" "$PLAYER_SOURCE"
+
+# $ENGINE must look like http://host:port with no trailing slash.
+[[ "$ENGINE" =~ ^http://[A-Za-z0-9._-]+(:[0-9]+)?$ ]] \
+    || die "ACE_ENGINE must be http://host[:port], got: $ENGINE"
+engine_authority="${ENGINE#http://}"
+
+# CID is the 40-hex content id when we have one. Used by the end-of-session
+# 'save as favourite' prompt. FROM_FAV suppresses the prompt when we played
+# something already in the favourites file.
+CID=""
+FROM_FAV=0
+
+# Refuse control bytes in any positional arg. They have no legitimate
+# place in a cid, a URL, a favourite name, or a subcommand argument.
+# Catches the practical attack vector: a tampered acestream:// link
+# fed to us by a compromised desktop-handler invocation could otherwise
+# carry ANSI/CSI/OSC escapes that hijack the user's terminal when we
+# later echo the arg back in an error message ("favourite '<EVIL>' not
+# found"). Doing the check once at the entry point is cheaper than
+# scrubbing at every error site. We use printf | grep -q (control bytes
+# in LC_ALL=C) rather than [[ ... ]] regex because bash regex handling
+# of NUL is non-portable.
+for _arg in "$@"; do
+    if LC_ALL=C printf %s "$_arg" | LC_ALL=C grep -q '[[:cntrl:]]'; then
+        die "input contains control bytes; refusing"
+    fi
+done
+unset _arg
+
+case "${1:-}" in
+    ""|-h|--help)
+        # Print the leading comment block (after the shebang) up to the
+        # first non-comment line. Decoupled from line numbers so adding
+        # docstring lines doesn't drift the help out of sync.
+        awk 'NR==1{next} /^#/{print; next} {exit}' "$0"; exit 0 ;;
+    fav)
+        shift; fav_dispatch "$@"; exit 0 ;;
+    engine)
+        shift; engine_dispatch "$@"; exit 0 ;;
+    --url)
+        [ $# -ge 2 ] || die "missing URL after --url"
+        # URL-encode the user-supplied transport URL before passing on.
+        encoded="$(jq -nr --arg u "$2" '$u|@uri')"
+        param="url=$encoded" ;;
+    --infohash)
+        [ $# -ge 2 ] || die "missing infohash after --infohash"
+        [[ "$2" =~ ^[A-Fa-f0-9]{40}$ ]] || die "infohash must be 40 hex chars"
+        param="infohash=$2" ;;
+    --*)
+        die "unknown option: $1
+try: aceman --help" ;;
+    *)
+        # Three distinct accepted inputs, with separate trust domains:
+        #
+        #   acestream://<40hex>[/]   from the desktop scheme handler (xdg).
+        #                            Strict: must be exactly 40 hex chars
+        #                            after the scheme, optional trailing
+        #                            slash, *no* path/query/fragment, and
+        #                            no extra positional args. NEVER falls
+        #                            back to fav_lookup — a compromised
+        #                            scheme-handler invocation must not be
+        #                            able to coax us into searching the
+        #                            user's favourites for arbitrary
+        #                            strings.
+        #
+        #   <40hex>                  bare content id (interactive use).
+        #
+        #   <anything else>          favourite name (interactive use).
+        #                            Joined across argv so multi-word
+        #                            names work unquoted.
+        case "$1" in
+            acestream://*)
+                _url_body="${1#acestream://}"
+                _url_body="${_url_body%/}"  # tolerate one trailing slash
+                [[ "$_url_body" =~ ^[A-Fa-f0-9]{40}$ ]] \
+                    || die "acestream:// URL must be exactly acestream://<40 hex chars>"
+                [ $# -eq 1 ] \
+                    || die "extra arguments after acestream:// URL; refusing"
+                CID="$_url_body"
+                unset _url_body
+                ;;
+            *)
+                if [[ "$1" =~ ^[A-Fa-f0-9]{40}$ ]]; then
+                    [ $# -eq 1 ] || die "extra arguments after content id"
+                    CID="$1"
+                else
+                    CID="$(fav_lookup "$*")"
+                    FROM_FAV=1
+                fi
+                ;;
+        esac
+        param="id=$CID" ;;
+esac
+
+# Player resolution only matters on play paths (fav/engine subcommands
+# exited above). Doing it here avoids erroring out "no player installed"
+# when the user is only running `aceman engine status`.
+resolve_player "$PLAYER" "$PLAYER_SOURCE"
+
+# Probe the engine. If it's already up, use it as-is. If not, start it
+# ourselves via run-container.sh — same helper engine_cmd_start uses, so
+# autostart and explicit `aceman engine start` agree on behaviour.
+WE_STARTED_ENGINE=0
+if ! engine_up; then
+    echo "aceman: starting engine container '$ACE_NAME'..."
+    start_engine_now
+    WE_STARTED_ENGINE=1
+fi
+
+# Stop any previous aceman (and its player + engine session) before we
+# ask the engine for a fresh session — keeps "one stream at a time" as
+# the invariant and avoids the engine briefly serving two parallel sessions.
+acquire_active_session
+
+# Ask for the stream. format=json gives us a structured response with the
+# command_url we need to stop the session cleanly later. Cap the response
+# size so an unexpected response can't blow up jq with a multi-GB blob.
+resp="$(curl -fsS --max-time 30 --max-filesize 65536 \
+        "$ENGINE/ace/getstream?${param}&format=json")"
+
+# Strip control bytes (ANSI escapes, CR, etc.) so an unexpected error
+# message can't corrupt the terminal, and cap the length so it can't spam
+# the screen. We're showing this verbatim to the user via die().
+err="$(printf %s "$resp" | jq -r '.error // empty' \
+       | LC_ALL=C tr -d '[:cntrl:]' \
+       | cut -c1-300)"
+[ -n "$err" ] && die "engine refused: $err"
+
+# Extract URLs. -r raw output; we then sanity-check before use.
+playback_url="$(printf %s "$resp" | jq -r '.response.playback_url // empty')"
+command_url="$(printf %s "$resp"  | jq -r '.response.command_url  // empty')"
+
+[ -n "$playback_url" ] || die "no playback_url in engine response"
+
+# Reject control characters — they break downstream tools and never appear
+# in legitimate URLs.
+contains_ctrl() { LC_ALL=C grep -q '[[:cntrl:]]' <<<"$1"; }
+contains_ctrl "$playback_url"           && die "playback_url contains control chars"
+[ -n "$command_url" ] && contains_ctrl "$command_url" \
+    && die "command_url contains control chars"
+
+# Enforce scheme=http and force authority to the engine we configured.
+# This neutralises unexpected rewrites like file:///, http://127.0.0.1:631/,
+# or a remote host in the response.
+force_engine() {
+    local url="$1"
+    [[ "$url" =~ ^http:// ]] \
+        || die "URL scheme must be http, got: $url"
+    # Strip the authority the engine gave us; keep path+query.
+    local rest="${url#http://}"
+    rest="${rest#*/}"
+    printf 'http://%s/%s' "$engine_authority" "$rest"
+}
+
+playback_url="$(force_engine "$playback_url")"
+[ -n "$command_url" ] && command_url="$(force_engine "$command_url")"
+
+# After the player exits, offer to save the content id as a named favourite.
+# Skipped when nothing to save, when stdin isn't a TTY (cron/launcher/pipe),
+# when the id came from --fav, or when it's already in the file.
+prompt_save_fav() {
+    [ -n "$CID" ] || return 0
+    [ "$FROM_FAV" = "1" ] && return 0
+    [ -t 0 ] || return 0
+    # If this cid is already saved, surface the existing name so the user
+    # knows what to look for instead of being asked to name it again.
+    local existing
+    if existing="$(fav_name_by_cid)"; then
+        echo "already saved as '$existing'" >&2
+        return 0
+    fi
+
+    printf '\n'
+    local name=""
+    # Loop so the user can retry on an invalid name; empty input skips.
+    while :; do
+        printf 'Save as favourite? Enter a name (empty to skip): '
+        read -r name || return 0
+        [ -z "$name" ] && return 0
+        # Same name policy as --rename: 1-128 chars, no tabs/control bytes,
+        # no leading '#'. validate_fav_name exits on failure, so call it in
+        # a subshell and loop on its non-zero exit.
+        if ! ( validate_fav_name "$name" ) 2>/dev/null; then
+            # Re-run outside the subshell to surface the specific reason.
+            ( validate_fav_name "$name" ) 2>&1 \
+                | sed 's/^aceman: /  /' || true
+            echo "  try again."
+            continue
+        fi
+        # Reject a name already taken by a *different* cid.
+        if awk -F '\t' -v t="$name" '
+                BEGIN { c = 0 }
+                $0 != "" && $1 !~ /^#/ && $1 == t { c = 1 }
+                END { exit !c }
+            ' "$FAV_FILE" 2>/dev/null; then
+            echo "  name '$name' is already in use. try again."
+            continue
+        fi
+        break
+    done
+
+    mkdir -p "$(dirname "$FAV_FILE")"
+    # Ensure the file ends with a newline before appending, so we don't
+    # accidentally glue our new line onto a half-written previous one.
+    if [ -s "$FAV_FILE" ] && [ "$(tail -c1 "$FAV_FILE" | wc -l)" -eq 0 ]; then
+        printf '\n' >> "$FAV_FILE"
+    fi
+    printf '%s\t%s\n' "$name" "$CID" >> "$FAV_FILE"
+    echo "saved: $name -> $CID  (in $FAV_FILE)"
+}
+
+cleanup() {
+    trap - EXIT INT TERM
+    # Kill the WHOLE process group, not just the immediate child. Signalling
+    # only PLAYER_PID misses descendants when the player is wrapped (e.g.
+    # `flatpak run` → bwrap → VLC), leaving the real window alive after the
+    # wrapper exits. Negative PID = process group. `kill -0 -- -PGID`
+    # returns 0 iff any process in the group is still alive.
+    if [ -n "${PLAYER_PID:-}" ]; then
+        kill -TERM -- "-$PLAYER_PID" 2>/dev/null || true
+        local n=0
+        while [ "$n" -lt 20 ] && kill -0 -- "-$PLAYER_PID" 2>/dev/null; do
+            sleep 0.1
+            n=$((n + 1))
+        done
+        kill -KILL -- "-$PLAYER_PID" 2>/dev/null || true
+    fi
+    # Tell the engine the session is over. Backgrounded + setsid so a slow
+    # engine response doesn't delay our exit — the next aceman is
+    # waiting for us to die before it takes the lock. setsid detaches the
+    # curl from our session, so when bash exits it isn't SIGHUP'd.
+    if [ -n "${command_url:-}" ]; then
+        ( setsid curl -fsS --max-time 5 \
+              "${command_url}?method=stop" >/dev/null 2>&1 || true ) &
+        disown 2>/dev/null || true
+    fi
+    # Only remove the active-session marker if it still points at us. A
+    # newer aceman may have replaced our PID with its own before
+    # signalling us — in that case the marker belongs to them now.
+    if [ -r "$ACE_PID_FILE" ] \
+       && [ "$(cat "$ACE_PID_FILE" 2>/dev/null)" = "$$" ]; then
+        rm -f "$ACE_PID_FILE"
+    fi
+    # Remind about the engine if its container is still up — whether we
+    # started it this invocation or it was already running from a previous
+    # one. Avoids leaving it running in the background unnoticed.
+    if command -v podman >/dev/null \
+       && [ -n "$(podman ps --filter "name=^${ACE_NAME}$" --format '{{.Names}}' 2>/dev/null)" ]; then
+        printf '\n'
+        printf '\033[1;33m========================================================\033[0m\n'
+        printf '\033[1;33m  ENGINE STILL RUNNING  (container: %s)\n' "$ACE_NAME"
+        printf '  Stop it with:  \033[1;37mpodman stop %s\033[1;33m\n' "$ACE_NAME"
+        printf '========================================================\033[0m\n'
+    fi
+}
+trap cleanup EXIT INT TERM
+
+echo "aceman: playing $playback_url with ${PLAYER_CMD[*]}"
+# Background the player + `wait` so SIGTERM to this script (sent by a
+# later aceman invocation's acquire_active_session) interrupts the
+# wait and lets the trap fire. The plain foreground form blocks bash in
+# a way that signal delivery doesn't reach the trap until the player
+# itself exits — defeating the "second click replaces first" guarantee.
+#
+# `set -m` (job control) puts the backgrounded player in its OWN process
+# group, with PGID equal to the immediate child PID. We need this because
+# the player is often a wrapper (`flatpak run …` → bwrap → VLC, or vlc
+# spawning helper processes): a plain `kill PLAYER_PID` only signals the
+# wrapper, the wrapper exits, and the real player window survives — so a
+# rapid Play-Play-Play sequence stacks visible windows. Killing the whole
+# PGID (`kill -- -PLAYER_PID`) reaches every descendant in one shot.
+#
+# '--' so the player won't parse the URL as a flag.
+set -m
+"${PLAYER_CMD[@]}" -- "$playback_url" &
+PLAYER_PID=$!
+set +m
+wait "$PLAYER_PID" || true
+PLAYER_PID=""
+
+prompt_save_fav

@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+"""aceman-broker — host-side allow-list broker for podman ops.
+
+The implementation lives in the ``aceman_broker`` package alongside
+this script; this file is a thin entrypoint so the existing path
+(``./broker/aceman-broker``) keeps working unchanged.
+
+The broker:
+
+  * Exposes a fixed set of actions (engine + image + players +
+    browsers + desktop + web-lifecycle) on a unix socket at
+    ``$XDG_RUNTIME_DIR/aceman/broker.sock``.
+  * Validates every env var at startup (no string from there ever
+    reaches the podman argv unchecked).
+  * Validates every per-request param at action time (likewise).
+  * Logs to stderr with terminal-safety escaping so podman's hostile
+    error strings can't hijack an operator's terminal.
+
+See ``aceman_broker/__init__.py`` for the package overview, and
+``broker/tests/`` for the unit-test surface.
+
+Single user namespace, single process per user (flock + socket
+probe). Stdlib-only — same constraint as the rest of the project.
+
+Python 3.9+.
+"""
+
+from __future__ import annotations
+
+import pathlib
+import sys
+
+# Set kernel-level process comm so `ps`, `top`, `cat /proc/PID/comm`,
+# and journald all show "aceman-broker" instead of "python3". Linux
+# only; harmless no-op everywhere else. Done before any other import
+# so the name is set even if startup later raises.
+try:
+    import ctypes as _ctypes
+    _ctypes.CDLL("libc.so.6", use_errno=True).prctl(
+        15, b"aceman-broker\0", 0, 0, 0)
+except OSError:
+    pass
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from aceman_broker.main import main  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(main())
