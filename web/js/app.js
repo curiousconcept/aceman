@@ -28,6 +28,8 @@ import { findFavByCid } from './lib/fav_lookup.js';
 import { targetValueToConfig } from './lib/playback_config.js';
 import { formatResetReport } from './lib/factory_reset_report.js';
 import { describeDesktopStatus } from './lib/desktop_status.js';
+import { describePlayButton } from './lib/play_button.js';
+import { describeMoveButton } from './lib/move_button.js';
 
 const $ = id => document.getElementById(id);
 
@@ -827,40 +829,28 @@ async function waitForEngineReady(msg, timeoutMs = 90_000) {
 function refreshPlayButton() {
   const btn = $('play-btn');
   if (!btn) return;
-  if (livePlaybackTarget) {
-    btn.textContent = '⏹';
-    btn.title = 'Stop';
-    btn.setAttribute('aria-label', 'Stop');
-    btn.classList.add('playing');
-  } else {
-    btn.textContent = '▶';
-    btn.title = 'Play';
-    btn.setAttribute('aria-label', 'Play');
-    btn.classList.remove('playing');
-  }
+  const v = describePlayButton(!!livePlaybackTarget);
+  btn.textContent = v.text;
+  btn.title = v.title;
+  btn.setAttribute('aria-label', v.ariaLabel);
+  btn.classList.toggle('playing', v.playingClass);
 }
 
 function refreshPlaybackMoveButton() {
   const btn = $('playback-move');
   const sel = $('playback-target');
-  // "Live" pip on the PLAYBACK corner label reuses the same authoritative
+  // "Live" pip on the PLAYBACK card label reuses the same authoritative
   // "is anything actually playing right now" flag the move button does.
   const livePip = $('playback-live');
   if (livePip) livePip.style.display = livePlaybackTarget ? '' : 'none';
   refreshPlayButton();
   if (!btn || !sel) return;
-  // Nothing actually playing (no in-browser proxy, no external launch
-  // we know about) → hide. `livePlaybackTarget` is set by play()/move
-  // when a stream actually starts, and cleared by stopInBrowserPlayback
-  // / clearNowPlaying. Without this, hitting "Stop in-browser playback"
-  // left the Move button visible because `current` was still set.
-  if (!livePlaybackTarget) { btn.style.display = 'none'; return; }
-  if (sel.value && sel.value !== livePlaybackTarget) {
-    btn.style.display = '';
-    btn.textContent = `Move current stream → ${sel.options[sel.selectedIndex].textContent}`;
-  } else {
-    btn.style.display = 'none';
-  }
+  const selectedLabel = sel.selectedIndex >= 0
+      ? sel.options[sel.selectedIndex].textContent
+      : '';
+  const view = describeMoveButton(livePlaybackTarget, sel.value, selectedLabel);
+  btn.style.display = view.visible ? '' : 'none';
+  if (view.visible) btn.textContent = view.text;
 }
 
 async function movePlaybackToSelection() {
