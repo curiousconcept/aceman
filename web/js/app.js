@@ -30,6 +30,7 @@ import { formatResetReport } from './lib/factory_reset_report.js';
 import { describeDesktopStatus } from './lib/desktop_status.js';
 import { describePlayButton } from './lib/play_button.js';
 import { describeMoveButton } from './lib/move_button.js';
+import { describeEngineToggle } from './lib/engine_toggle.js';
 
 const $ = id => document.getElementById(id);
 
@@ -964,52 +965,16 @@ async function refreshEngineStatus() {
   const el = $('engine-status');
   const btn = $('engine-toggle');
   const hint = $('engine-toggle-hint');
-  hint.textContent = '';
-  hint.className = 'gate-hint';
 
-  const settling = engineState.isSettling();
-
-  if (s.container && s.up) {
-    el.textContent = 'running';
-    el.className = 'status ok';
-    btn.textContent = 'Stop';
-    btn.dataset.action = 'stop';
-    btn.className = 'danger-outline';
-    btn.disabled = false;
-  } else if (settling) {
-    // Any partial state during the settle window — container up but
-    // API still not answering, or container fully gone — gets the
-    // same disabled "Settling…" treatment. The status text varies so
-    // the user can see *what* phase of restart we're in.
-    el.textContent = s.container
-        ? 'restarting… (container up, API not answering)'
-        : 'restarting…';
-    el.className = 'status';
-    btn.textContent = 'Settling…';
-    btn.dataset.action = '';
-    btn.className = '';
-    btn.disabled = true;
-  } else if (s.container) {
-    el.textContent = 'container up, API not answering';
-    el.className = 'status bad';
-    btn.textContent = 'Stop';
-    btn.dataset.action = 'stop';
-    btn.className = 'danger-outline';
-    btn.disabled = false;
-  } else {
-    el.textContent = 'not running';
-    el.className = 'status bad';
-    btn.textContent = 'Start';
-    btn.dataset.action = 'start';
-    btn.className = 'primary';
-    if (s.image_installed === false) {
-      btn.disabled = true;
-      hint.textContent = 'engine image not installed';
-      hint.className = 'gate-hint warn';
-    } else {
-      btn.disabled = false;
-    }
-  }
+  const view = describeEngineToggle(s, engineState.isSettling());
+  el.textContent = view.status;
+  el.className = view.statusClass;
+  btn.textContent = view.button.text;
+  btn.dataset.action = view.button.action;
+  btn.className = view.button.className;
+  btn.disabled = view.button.disabled;
+  hint.textContent = view.hint.text;
+  hint.className = view.hint.className;
 
   refreshPlayGate();
 }
