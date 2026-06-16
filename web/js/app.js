@@ -26,6 +26,7 @@ import { buildPlaybackOptions } from './lib/playback_options.js';
 import { decidePlaybackPath } from './lib/playback_decision.js';
 import { findFavByCid } from './lib/fav_lookup.js';
 import { targetValueToConfig } from './lib/playback_config.js';
+import { formatResetReport } from './lib/factory_reset_report.js';
 
 const $ = id => document.getElementById(id);
 
@@ -1419,17 +1420,7 @@ async function runFactoryReset() {
   // happened. The page itself is now in an inconsistent state (its db is
   // gone, its container is gone) — a hard reload after the user dismisses
   // the modal is the cleanest way back to a known-good state.
-  const stepLines = (report.steps || []).map(s =>
-    `${s.ok ? '✓' : '✗'} ${s.name}${s.note ? ` (${s.note})` : ''}${s.error ? `\n    ${s.error}` : ''}`);
-  // List anything we deliberately left alone so the user isn't
-  // surprised to find logs still in ~/.cache or the project tree on
-  // disk. Sent by the server in `report.kept`.
-  let footer = '';
-  if (Array.isArray(report.kept) && report.kept.length) {
-    footer = '\n\nKept:\n' + report.kept
-      .map(k => `  ${k.path}\n    ${k.reason}`).join('\n');
-  }
-  $('reset-report').textContent = stepLines.join('\n') + footer;
+  $('reset-report').textContent = formatResetReport(report);
   $('reset-report').style.display = '';
   btn.textContent = 'Done — reload page';
   btn.disabled = false;
