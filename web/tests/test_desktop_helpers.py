@@ -36,8 +36,8 @@ class DesktopQuoteArgTests(unittest.TestCase):
 
     def test_handles_path_with_spaces(self):
         self.assertEqual(
-            _desktop_quote_arg("/var/home/impact/Projects/My Project/bin"),
-            '"/var/home/impact/Projects/My Project/bin"')
+            _desktop_quote_arg("/home/user/Projects/My Project/bin"),
+            '"/home/user/Projects/My Project/bin"')
 
     def test_handles_combined_specials(self):
         out = _desktop_quote_arg(r'$X "Y" `Z` \W')

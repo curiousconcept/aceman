@@ -73,7 +73,7 @@ class PidMatchesAcemanTests(unittest.TestCase):
 
     def test_matches_when_cmdline_contains_aceman(self):
         # Synthesise a fake /proc/PID/cmdline by patching the read.
-        fake_cmdline = b"bash\0/var/home/u/aceman\0acestream://aaaa\0"
+        fake_cmdline = b"bash\0/home/user/aceman\0acestream://aaaa\0"
         with mock.patch("aceman_broker.wrapper.pathlib.Path") as P:
             inst = mock.MagicMock()
             inst.read_bytes.return_value = fake_cmdline

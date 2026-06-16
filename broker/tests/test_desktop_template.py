@@ -48,7 +48,7 @@ class DesktopQuoteArgTests(unittest.TestCase):
 
 class DesktopTemplateTests(unittest.TestCase):
     def setUp(self):
-        self.launcher = "/var/home/u/Projects/aceman/aceman_web"
+        self.launcher = "/home/user/Projects/aceman/aceman_web"
         self.body = render_desktop_entry(self.launcher, "127.0.0.1", 8770)
 
     def test_has_required_keys(self):
