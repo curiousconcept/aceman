@@ -38,6 +38,12 @@ import { describePlayButtonGate } from './lib/engine/play_button_gate.js';
 const $ = id => document.getElementById(id);
 
 let mode = 'browser';   // 'sqlite' or 'browser', set by /api/storage-mode
+// WSL mode: the page is served from a Linux WSL distro to a Windows
+// browser via the WSL guest IP. Set by /api/storage-mode at bootstrap.
+// When true, Linux-desktop-only UI (App-launcher card + acestream://
+// scheme handler) is hidden — none of it can take effect from a
+// Windows browser session.
+let isWslMode = false;
 // Tracks just enough about the last Play to drive the Save button: we no
 // longer own the session (the host shell does via acestream:// dispatch),
 // so there's no playback_url or command_url to remember.
@@ -1353,6 +1359,10 @@ async function runFactoryReset() {
 }
 
 async function refreshDesktopEntry() {
+  // No-op in WSL mode — the App-launcher row is hidden and writing
+  // a Linux .desktop file from a Windows-served session would be
+  // confusing at best, broken at worst.
+  if (isWslMode) return;
   let s = null;
   try { s = await api('/api/desktop-entry/app'); }
   catch (_) { /* leave s = null; describeDesktopShortcutStatus collapses to 'unavailable' */ }
@@ -1546,6 +1556,13 @@ async function toggleDesktopEntry() {
     const badge = describeFavouritesStorageBadge(mode, cfg.favorites_path);
     $('storage-badge').textContent = badge.text;
     $('storage-badge').title = badge.title;
+    // Hide Linux-desktop-only affordances when the server told us
+    // this session is being served to a Windows-side browser.
+    isWslMode = !!cfg.is_wsl;
+    if (isWslMode) {
+      const row = $('desktop-row');
+      if (row) row.style.display = 'none';
+    }
   } catch (e) {
     showError('Could not contact backend: ' + e.message);
   }

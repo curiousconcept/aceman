@@ -1440,6 +1440,14 @@ def main(argv: list[str] | None = None) -> int:
                         "(stops the engine container too). 0 disables. Only "
                         "fires after the first request, so a no-browser launch "
                         "stays up. Default: 60.")
+    p.add_argument("--wsl", action="store_true",
+                   default=os.environ.get("ACE_WSL") == "1",
+                   help="WSL mode: the page is being served to a Windows-side "
+                        "browser across the WSL guest IP. Hides the App-launcher "
+                        "card and the acestream:// scheme-handler buttons in the "
+                        "UI (they only make sense for a Linux desktop). The "
+                        "aceman_web shell wrapper sets this automatically when "
+                        "invoked with --wsl.")
     p.add_argument("url", nargs="?", default=None,
                    help="optional acestream://<cid> URL to autoplay. Passed by "
                         "the desktop entry's xdg-mime dispatch when the user "
@@ -1504,6 +1512,7 @@ def main(argv: list[str] | None = None) -> int:
         desktop_entry=Handler.desktop_entry,
         search_proxy=Handler.search_proxy,
         heartbeat=Handler.heartbeat,
+        is_wsl=args.wsl,
     )
     Handler.router = Router()
     _register_routes(Handler.router)

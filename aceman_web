@@ -6,6 +6,17 @@
 # and the .py file's location. Resolves its own directory through any
 # symlinks so the wrapper can be itself symlinked into ~/bin.
 #
+# Flags (consumed here, not forwarded to python):
+#   --container   — run the web frontend inside the rootless podman
+#                   image (container/aceman-web/Containerfile.web)
+#                   instead of the host python.
+#   --wsl         — serve to a Windows-side browser via the WSL guest IP.
+#                   Implies --host 0.0.0.0; strips --open-browser; passes
+#                   --wsl through to python so the UI hides Linux-only
+#                   affordances (App launcher card, acestream:// scheme
+#                   handler). Refuses outside WSL. Same flag is honored
+#                   via ACE_WSL=1.
+#
 # Also bootstraps the host-side broker (broker/aceman-broker) — a tiny
 # unix-socket service that owns the podman allow-list. The Python web
 # never touches podman directly; it sends actions to the broker over a
@@ -131,13 +142,70 @@ fi
 # container and write the desktop entry; containerising it would just
 # weaken the isolation we built it for.
 WEB_USE_CONTAINER="${ACE_WEB_CONTAINER:-0}"
+# --wsl: serve to a Windows-side browser via the WSL guest IP.
+# Implies --host 0.0.0.0 (so the WSL IP route actually answers) and
+# strips --open-browser (would try to spawn a Linux browser that
+# probably isn't installed on a headless WSL distro). The flag is
+# forwarded to python so the UI hides Linux-desktop-only affordances.
+WEB_USE_WSL=0
 _web_argv=()
+_have_host_flag=0
 for _arg in "$@"; do
     case "$_arg" in
         --container) WEB_USE_CONTAINER=1 ;;
+        --wsl)       WEB_USE_WSL=1 ;;
+        --open-browser)
+            if [ "$WEB_USE_WSL" = 1 ] || [ "${ACE_WSL:-0}" = 1 ]; then
+                : # silently drop — browser is on the Windows side
+            else
+                _web_argv+=("$_arg")
+            fi
+            ;;
+        --host) _have_host_flag=1; _web_argv+=("$_arg") ;;
         *) _web_argv+=("$_arg") ;;
     esac
 done
+unset _arg
+if [ "${ACE_WSL:-0}" = 1 ]; then WEB_USE_WSL=1; fi
+
+if [ "$WEB_USE_WSL" = 1 ]; then
+    if ! grep -qiE "microsoft|wsl" /proc/sys/kernel/osrelease 2>/dev/null; then
+        echo "aceman_web: --wsl flag passed but this isn't WSL — refusing." >&2
+        exit 1
+    fi
+    # The WSL guest IP is what Windows uses to reach this distro.
+    # `hostname -I` lists every assigned address; first one is the
+    # routable interface in NAT mode.
+    _wsl_ip="$(hostname -I 2>/dev/null | awk '{print $1; exit}')"
+    if [ -z "$_wsl_ip" ]; then
+        echo "aceman_web: could not resolve WSL guest IP (hostname -I empty)" >&2
+        exit 1
+    fi
+    # Default bind under WSL is 0.0.0.0 (so the WSL guest IP answers).
+    # If the caller passed --host explicitly we honor it; otherwise inject.
+    if [ "$_have_host_flag" = 0 ]; then
+        _web_argv+=(--host 0.0.0.0)
+    fi
+    # Tell python so it surfaces is_wsl=true on /api/storage-mode and
+    # the frontend hides the App-launcher row.
+    _web_argv+=(--wsl)
+    # Surface the Windows-side URL on stdout/stderr (both so the
+    # terminal user AND the cache log capture it). The actual port
+    # gets resolved by python; we read it back from the env override
+    # or the default 8770 the launcher script uses.
+    _wsl_port="${ACE_WEB_PORT:-8770}"
+    for _i in "${!_web_argv[@]}"; do
+        if [ "${_web_argv[$_i]}" = "--port" ]; then
+            _next=$(( _i + 1 ))
+            [ -n "${_web_argv[$_next]:-}" ] && _wsl_port="${_web_argv[$_next]}"
+            break
+        fi
+    done
+    printf 'aceman_web: WSL mode — open in Windows browser: http://%s:%s/\n' \
+        "$_wsl_ip" "$_wsl_port" | tee -a "$WEB_LOG"
+    unset _wsl_ip _wsl_port _i _next _have_host_flag
+fi
+unset _have_host_flag
 
 if [ "$WEB_USE_CONTAINER" = "1" ]; then
     exec -a aceman_web "$SCRIPT_DIR/container/run-web-container.sh" "${_web_argv[@]}"

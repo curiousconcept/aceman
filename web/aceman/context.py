@@ -48,3 +48,9 @@ class RouteContext:
     desktop_entry: Optional[DesktopBrokerClient] = None
     search_proxy: Optional[SearchProxy] = None
     heartbeat: HeartbeatTracker = field(default_factory=HeartbeatTracker)
+    # True when the launcher was invoked with `aceman_web --wsl` (or
+    # ACE_WSL=1). The frontend reads this via /api/storage-mode and
+    # hides Linux-desktop-only affordances (App launcher card, scheme
+    # handler registration) since the user is reaching the web from a
+    # Windows-side browser.
+    is_wsl: bool = False
