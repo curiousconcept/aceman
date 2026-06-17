@@ -135,15 +135,35 @@ def _strip_module_syntax(src: str) -> str:
     receives one inlined IIFE bundle to keep the existing
     "single-template, single-request" page-load shape.
 
-    The transforms are deliberately tiny: only line-leading ``import``
-    statements get dropped, and only line-leading ``export`` keywords
-    get stripped from their definition. Anything more clever would
-    duplicate a real bundler — explicitly out of scope (stdlib-only).
+    Handles multi-line imports — once a line starts with ``import ``
+    we drop every following line too, until we see one that ends in
+    ``;``. Otherwise the trailing ``from '…';`` clause would survive
+    into the bundle as an orphan statement (``Unexpected string`` at
+    parse time, which is opaque in the browser console).
+
+    The transforms are deliberately tiny: line-leading ``import``
+    statements get dropped (single- or multi-line); line-leading
+    ``export`` keywords get stripped from their definition. Anything
+    more clever would duplicate a real bundler — explicitly out of
+    scope (stdlib-only).
     """
     out_lines = []
+    inside_import = False
     for line in src.splitlines():
         s = line.lstrip()
+        if inside_import:
+            # Continuation of a multi-line import. Drop the line, and
+            # exit the skip state once the statement terminates with
+            # a semicolon at end-of-line.
+            if line.rstrip().endswith(";"):
+                inside_import = False
+            continue
         if s.startswith("import "):
+            # If the import statement closes on the same line, no
+            # continuation skip needed. Otherwise stay in skip mode
+            # until the terminating semicolon shows up.
+            if not line.rstrip().endswith(";"):
+                inside_import = True
             continue
         if s.startswith("export "):
             line = line.replace("export ", "", 1)
