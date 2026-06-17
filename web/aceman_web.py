@@ -151,6 +151,29 @@ def _strip_module_syntax(src: str) -> str:
     return "\n".join(out_lines)
 
 
+_TOP_LEVEL_DECL_RE = re.compile(
+    r"^(?:export\s+)?(?:const|let|var|function|class)\s+([A-Za-z_][A-Za-z0-9_]*)",
+    re.MULTILINE,
+)
+
+
+def _top_level_names(src: str) -> "list[str]":
+    """Best-effort enumeration of identifiers introduced at the top
+    level of an ES module. The bundler flattens every module into a
+    single IIFE, so any name that lands at module scope (whether
+    `export`ed or not) becomes a sibling of every other module's
+    top-level names. Two modules declaring the same `const X` would
+    silently break the inlined script with a SyntaxError at parse
+    time — and the operator only finds out when the page crashes.
+
+    This is line-prefix matching, not a real parser; nested blocks
+    inside if/for/etc. are naturally skipped because they don't sit
+    at the start of a line. Good enough for the project's stdlib-only
+    constraint and small enough to keep in this file.
+    """
+    return _TOP_LEVEL_DECL_RE.findall(src)
+
+
 def _bundle_js() -> str:
     lib_dir = _HERE / "js" / "lib"
     # rglob (not glob) so the bundler picks up the grouped
@@ -158,13 +181,28 @@ def _bundle_js() -> str:
     # cards/. Top-level lib/*.js still resolve naturally.
     lib_files = sorted(lib_dir.rglob("*.js")) if lib_dir.exists() else []
     parts = []
+    seen: "dict[str, str]" = {}  # name → first file that declared it
     for p in lib_files:
+        rel = p.relative_to(lib_dir)
+        src = p.read_text(encoding="utf-8")
+        # Fail loudly on a duplicate top-level identifier before the
+        # bundle ever reaches the browser — otherwise the operator
+        # sees an opaque "Identifier 'X' has already been declared"
+        # in the devtools console and has to bisect.
+        for name in _top_level_names(src):
+            prev = seen.get(name)
+            if prev is not None:
+                raise RuntimeError(
+                    f"bundler: duplicate top-level identifier {name!r} "
+                    f"declared in both {prev} and {rel} — rename one or "
+                    f"move the constant inside the function."
+                )
+            seen[name] = str(rel)
         # Show the relative path in the section header so a stack
         # trace pointing at "lib/playback/playback_target.js" lines
         # up with what the developer sees in their editor.
-        rel = p.relative_to(lib_dir)
         parts.append(f"// ---- {rel} ----")
-        parts.append(_strip_module_syntax(p.read_text(encoding="utf-8")))
+        parts.append(_strip_module_syntax(src))
     parts.append("// ---- app.js ----")
     parts.append(_strip_module_syntax(
         (_HERE / "js" / "app.js").read_text(encoding="utf-8")))

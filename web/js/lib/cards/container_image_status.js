@@ -21,7 +21,7 @@
 // branch.
 
 export function describeContainerImageStatus(s) {
-  if (!s) return UNAVAILABLE;
+  if (!s) return UNAVAILABLE_CONTAINER_IMAGE;
 
   if (s.state === 'building') {
     const log = s.log_tail || [];
@@ -64,7 +64,7 @@ export function describeContainerImageStatus(s) {
   };
 }
 
-const UNAVAILABLE = Object.freeze({
+const UNAVAILABLE_CONTAINER_IMAGE = Object.freeze({
   status: 'unavailable',
   statusClass: 'status bad',
   installButton: { text: 'Install', disabled: true },

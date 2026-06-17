@@ -13,7 +13,7 @@
 // that into the 'unavailable' state so the caller doesn't branch.
 
 export function describeDesktopShortcutStatus(s) {
-  if (!s) return UNAVAILABLE;
+  if (!s) return UNAVAILABLE_DESKTOP;
 
   if (s.installed) {
     return {
@@ -41,7 +41,7 @@ export function describeDesktopShortcutStatus(s) {
   };
 }
 
-const UNAVAILABLE = Object.freeze({
+const UNAVAILABLE_DESKTOP = Object.freeze({
   status: 'unavailable',
   statusClass: 'status bad',
   // We still surface a button so the user can see the control exists,
