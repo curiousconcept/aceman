@@ -336,9 +336,36 @@ validate_size() {
 # ACE_MEMORY / ACE_CACHE_SIZE / ACE_API_PORT in env get forwarded by the
 # launcher.
 RUN_SH="$SCRIPT_DIR/container/engine/run-container.sh"
+ENGINE_CTX="$SCRIPT_DIR/container/engine"
+ENGINE_IMAGE_TAG="${ACE_IMAGE:-localhost/acestream:vetted}"
+
+# Build the engine image from container/engine/ if podman doesn't
+# already know about it. Idempotent — a present image is a no-op.
+# Surfaces build progress on stderr so a slow first run doesn't look
+# like the script has hung. Caller has already confirmed `podman` is
+# on PATH.
+ensure_engine_image() {
+    if podman image exists "$ENGINE_IMAGE_TAG" 2>/dev/null; then
+        return 0
+    fi
+    [ -d "$ENGINE_CTX" ] || die "engine build context missing: $ENGINE_CTX"
+    [ -f "$ENGINE_CTX/Containerfile" ] || die "Containerfile missing in $ENGINE_CTX"
+    # The engine tarball is expected at container/engine/dist/engine.tar.gz
+    # (see README: 'Engine tarball'). Refuse early with a clear message
+    # instead of letting podman fail mid-build several minutes in.
+    [ -f "$ENGINE_CTX/dist/engine.tar.gz" ] \
+        || die "engine tarball missing: $ENGINE_CTX/dist/engine.tar.gz
+download from acestream.media and place it at the path above, then re-run."
+    echo "aceman: building engine image '$ENGINE_IMAGE_TAG' (first run only, ~2 min)..." >&2
+    ( cd "$ENGINE_CTX" \
+      && podman build -t "$ENGINE_IMAGE_TAG" -f Containerfile . ) >&2 \
+        || die "engine image build failed; see output above"
+}
+
 start_engine_now() {
     command -v podman >/dev/null || die "podman not installed"
     [ -x "$RUN_SH" ] || die "$RUN_SH missing"
+    ensure_engine_image
     ACE_DETACH=1 ACE_NAME="$ACE_NAME" "$RUN_SH" >/dev/null \
         || die "failed to start engine via $RUN_SH"
     for _ in $(seq 1 30); do
