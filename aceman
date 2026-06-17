@@ -328,7 +328,7 @@ validate_size() {
 # answers. Caller checks podman exists and the container isn't already up.
 # ACE_MEMORY / ACE_CACHE_SIZE / ACE_API_PORT in env get forwarded by the
 # launcher.
-RUN_SH="$SCRIPT_DIR/container/run-container.sh"
+RUN_SH="$SCRIPT_DIR/container/engine/run-container.sh"
 start_engine_now() {
     command -v podman >/dev/null || die "podman not installed"
     [ -x "$RUN_SH" ] || die "$RUN_SH missing"
