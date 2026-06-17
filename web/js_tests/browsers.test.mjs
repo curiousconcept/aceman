@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   KNOWN_BROWSERS, browserLabel,
-  sniffBrowserFromUA, detectCurrentBrowser,
+  sniffBrowserFromUA, detectBrowserFromNav,
 } from '../js/lib/browsers.js';
 
 test('KNOWN_BROWSERS is frozen and covers the four shipped probes', () => {
@@ -71,36 +71,36 @@ test('sniffBrowserFromUA — non-string / empty → empty', () => {
   assert.equal(sniffBrowserFromUA(''), '');
 });
 
-test('detectCurrentBrowser — Brave probe returns true → brave', async () => {
-  const got = await detectCurrentBrowser({
+test('detectBrowserFromNav — Brave probe returns true → brave', async () => {
+  const got = await detectBrowserFromNav({
     userAgent: UA.brave,
     brave: { isBrave: async () => true },
   });
   assert.equal(got, 'brave');
 });
 
-test('detectCurrentBrowser — Brave probe returns false → falls back to UA', async () => {
-  const got = await detectCurrentBrowser({
+test('detectBrowserFromNav — Brave probe returns false → falls back to UA', async () => {
+  const got = await detectBrowserFromNav({
     userAgent: UA.chrome,
     brave: { isBrave: async () => false },
   });
   assert.equal(got, 'google-chrome');
 });
 
-test('detectCurrentBrowser — Brave probe throws → falls back to UA', async () => {
-  const got = await detectCurrentBrowser({
+test('detectBrowserFromNav — Brave probe throws → falls back to UA', async () => {
+  const got = await detectBrowserFromNav({
     userAgent: UA.firefox,
     brave: { isBrave: async () => { throw new Error('locked'); } },
   });
   assert.equal(got, 'firefox');
 });
 
-test('detectCurrentBrowser — no nav object at all → UA sniff only', async () => {
-  const got = await detectCurrentBrowser({ userAgent: UA.chromium });
+test('detectBrowserFromNav — no nav object at all → UA sniff only', async () => {
+  const got = await detectBrowserFromNav({ userAgent: UA.chromium });
   assert.equal(got, 'chromium');
 });
 
-test('detectCurrentBrowser — no args → empty', async () => {
-  assert.equal(await detectCurrentBrowser(), '');
-  assert.equal(await detectCurrentBrowser({}), '');
+test('detectBrowserFromNav — no args → empty', async () => {
+  assert.equal(await detectBrowserFromNav(), '');
+  assert.equal(await detectBrowserFromNav({}), '');
 });

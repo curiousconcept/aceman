@@ -2,34 +2,34 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { inBrowserSupported } from '../js/lib/playback/playback_feature_detect.js';
+import { inBrowserPlaybackSupported } from '../js/lib/playback/playback_feature_detect.js';
 
 test('mpegts present + isSupported() truthy → true', () => {
   const fakeWindow = { mpegts: { isSupported: () => true } };
-  assert.equal(inBrowserSupported(fakeWindow), true);
+  assert.equal(inBrowserPlaybackSupported(fakeWindow), true);
 });
 
 test('mpegts present but isSupported() returns false → false', () => {
   const fakeWindow = { mpegts: { isSupported: () => false } };
-  assert.equal(inBrowserSupported(fakeWindow), false);
+  assert.equal(inBrowserPlaybackSupported(fakeWindow), false);
 });
 
 test('mpegts missing → false (script never loaded)', () => {
-  assert.equal(inBrowserSupported({}), false);
+  assert.equal(inBrowserPlaybackSupported({}), false);
 });
 
 test('mpegts is truthy but lacks isSupported method → false', () => {
   // A half-loaded vendor bundle should NOT promote in-browser
   // playback as available — that would crash later when createPlayer
   // is missing too.
-  assert.equal(inBrowserSupported({ mpegts: {} }), false);
-  assert.equal(inBrowserSupported({ mpegts: { isSupported: 'not-a-fn' } }),
+  assert.equal(inBrowserPlaybackSupported({ mpegts: {} }), false);
+  assert.equal(inBrowserPlaybackSupported({ mpegts: { isSupported: 'not-a-fn' } }),
                false);
 });
 
 test('null / undefined globalObj → false (no crash)', () => {
-  assert.equal(inBrowserSupported(null), false);
-  assert.equal(inBrowserSupported(undefined), false);
+  assert.equal(inBrowserPlaybackSupported(null), false);
+  assert.equal(inBrowserPlaybackSupported(undefined), false);
 });
 
 test('isSupported throwing is treated as unsupported', () => {
@@ -39,5 +39,5 @@ test('isSupported throwing is treated as unsupported', () => {
   const fakeWindow = {
     mpegts: { isSupported: () => { throw new Error('blocked'); } },
   };
-  assert.equal(inBrowserSupported(fakeWindow), false);
+  assert.equal(inBrowserPlaybackSupported(fakeWindow), false);
 });

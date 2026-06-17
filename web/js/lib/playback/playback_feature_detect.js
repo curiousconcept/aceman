@@ -10,7 +10,7 @@
 // predicate can be exercised against any combination of (mpegts
 // present? mpegts.isSupported()?) without touching the real page.
 
-export function inBrowserSupported(globalObj) {
+export function inBrowserPlaybackSupported(globalObj) {
   const g = globalObj || (typeof window !== 'undefined' ? window : null);
   if (!g) return false;
   const m = g.mpegts;

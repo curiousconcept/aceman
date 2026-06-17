@@ -42,13 +42,13 @@ export function sniffBrowserFromUA(ua) {
 // Async detection with injectable dependencies. Production passes
 // the real navigator; tests pass a stand-in.
 //
-//   await detectCurrentBrowser({ userAgent, brave });
+//   await detectBrowserFromNav({ userAgent, brave });
 //
 // `brave` is an object with `.isBrave()` returning a Promise<bool>
 // (matches the real navigator.brave shape). If it's absent or
 // throws, we fall back to the UA sniff. Returns one of
 // KNOWN_BROWSERS or '' (uncertain).
-export async function detectCurrentBrowser({ userAgent = '', brave = null } = {}) {
+export async function detectBrowserFromNav({ userAgent = '', brave = null } = {}) {
   if (brave && typeof brave.isBrave === 'function') {
     try {
       if (await brave.isBrave()) return 'brave';

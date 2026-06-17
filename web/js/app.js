@@ -16,10 +16,9 @@ import { debounce } from './lib/debounce.js';
 import { paginate } from './lib/pagination.js';
 import { shouldSearch, normaliseQuery, buildSearchUrl } from './lib/search_query.js';
 import { saveLastPlay, loadLastPlay, clearLastPlay } from './lib/playback/last_played_stream.js';
-import { browserLabel, detectCurrentBrowser as detectCurrentBrowserPure }
-  from './lib/browsers.js';
+import { browserLabel, detectBrowserFromNav } from './lib/browsers.js';
 import { extractPlayCidFromUrl } from './lib/playback/play_query_param.js';
-import { inBrowserSupported as inBrowserSupportedPure } from './lib/playback/playback_feature_detect.js';
+import { inBrowserPlaybackSupported } from './lib/playback/playback_feature_detect.js';
 import { extractExistingName } from './lib/api_errors.js';
 import { describeContainerImageStatus } from './lib/cards/container_image_status.js';
 import { buildPlaybackOptions } from './lib/playback/playback_options.js';
@@ -413,7 +412,7 @@ let mpegtsPlayer = null;   // the live mpegts.createPlayer instance, or null
 // MediaSource + mpegts.js detection lives in ./lib/feature_detect.js
 // and is exercised against stub globals in the test suite.
 function inBrowserSupported() {
-  return inBrowserSupportedPure(window);
+  return inBrowserPlaybackSupported(window);
 }
 
 // Post-handoff "you can close this tab" screen.
@@ -1035,7 +1034,7 @@ async function loadBrowsers() {
 const _browserLabel = browserLabel;
 let _currentBrowserName = '';
 async function detectCurrentBrowser() {
-  _currentBrowserName = await detectCurrentBrowserPure({
+  _currentBrowserName = await detectBrowserFromNav({
     userAgent: navigator.userAgent || '',
     brave: navigator.brave || null,
   });

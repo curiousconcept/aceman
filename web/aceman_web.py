@@ -149,26 +149,45 @@ def _strip_module_syntax(src: str) -> str:
     """
     out_lines = []
     inside_import = False
+    import_buffer: list[str] = []
     for line in src.splitlines():
         s = line.lstrip()
         if inside_import:
-            # Continuation of a multi-line import. Drop the line, and
-            # exit the skip state once the statement terminates with
-            # a semicolon at end-of-line.
+            import_buffer.append(s)
             if line.rstrip().endswith(";"):
                 inside_import = False
+                _check_no_import_alias(" ".join(import_buffer))
+                import_buffer = []
             continue
         if s.startswith("import "):
-            # If the import statement closes on the same line, no
-            # continuation skip needed. Otherwise stay in skip mode
-            # until the terminating semicolon shows up.
-            if not line.rstrip().endswith(";"):
+            if line.rstrip().endswith(";"):
+                _check_no_import_alias(s)
+            else:
                 inside_import = True
+                import_buffer.append(s)
             continue
         if s.startswith("export "):
             line = line.replace("export ", "", 1)
         out_lines.append(line)
     return "\n".join(out_lines)
+
+
+def _check_no_import_alias(stmt: str) -> None:
+    """ESM `import { X as Y }` aliases don't survive the bundler
+    because the strip step removes the import statement entirely,
+    leaving `Y` undefined in the IIFE. Fail loudly with a useful
+    error so future regressions don't ship as silent ReferenceError
+    crashes in the browser. Rename the export and import the
+    canonical name instead — see the detectBrowserFromNav rename
+    for the pattern.
+    """
+    if re.search(r"\bas\b", stmt):
+        raise RuntimeError(
+            f"bundler: import alias detected in {stmt!r}. "
+            "`import {{ X as Y }}` cannot be preserved by the "
+            "concatenating bundler — rename the export instead so "
+            "the alias is not needed."
+        )
 
 
 _TOP_LEVEL_DECL_RE = re.compile(
