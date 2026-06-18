@@ -406,12 +406,12 @@
        right-hand column. */
     .main { grid-template-columns: minmax(360px, 1fr) 2fr;
             grid-template-areas:
-              "favs top-row"
               "favs play"
+              "favs top-row"
               "favs setup";
             align-items: start; }
-    #top-row     { grid-area: top-row; }
     #play-card   { grid-area: play; }
+    #top-row     { grid-area: top-row; }
     #favs-card   { grid-area: favs; position: sticky; top: 1rem; }
     #setup-card  { grid-area: setup; }
   }

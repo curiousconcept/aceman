@@ -141,37 +141,10 @@
 
 <div class="main">
   <!-- Source order matches narrow-screen display order:
-       Player+Engine → Search → Playback → Favourites → Setup. The
-       wide-screen layout uses grid-template-areas in style.css to
-       lift Favourites out as a sticky left column. -->
-  <div class="top-row" id="top-row">
-    <div class="card has-card-label" id="player-card">
-      <span class="card-label">Player</span>
-      <div class="field">
-        <span class="field-label">Play in</span>
-        <select id="playback-target" disabled><option>…</option></select>
-        <button id="playback-move" style="display:none">Move current stream here</button>
-      </div>
-      <div class="field" style="justify-content: center">
-        <label style="font-size:.78rem; color:var(--mut)"
-               title="By default we hide browser entries that look like the one you're already in, since the browser's UA string can't distinguish, e.g., system Firefox from Flatpak Firefox. Turn this on to see every detected install — useful only when you specifically want to switch between two installs of the same browser.">
-          <input type="checkbox" id="show-all-browsers"> Show all browser installs
-        </label>
-      </div>
-      <div class="gate-hint" id="player-hint"></div>
-    </div>
-
-    <div class="card has-card-label">
-      <span class="card-label"><span id="engine-label" class="has-tooltip">Engine</span> <span class="status" id="engine-status" style="margin-left:.3rem">…</span></span>
-      <div class="row" style="justify-content: center">
-        <label><input type="checkbox" id="autostart"> Start engine when aceman launches</label>
-      </div>
-      <div class="row" style="justify-content: center">
-        <button id="engine-toggle" disabled>…</button>
-        <span class="gate-hint" id="engine-toggle-hint"></span>
-      </div>
-    </div>
-  </div>
+       Watch → Favourites → Player+Engine → Setup. The wide-screen
+       layout uses grid-template-areas in style.css to lift
+       Favourites out as a sticky left column while keeping the same
+       row order on the right side. -->
 
   <div class="card has-card-label" id="play-card">
     <span class="card-label" id="playback-label">
@@ -229,6 +202,35 @@
       <button id="fav-prev">‹ Prev</button>
       <span class="status" id="fav-info"></span>
       <button id="fav-next">Next ›</button>
+    </div>
+  </div>
+
+  <div class="top-row" id="top-row">
+    <div class="card has-card-label" id="player-card">
+      <span class="card-label">Player</span>
+      <div class="field">
+        <span class="field-label">Play in</span>
+        <select id="playback-target" disabled><option>…</option></select>
+        <button id="playback-move" style="display:none">Move current stream here</button>
+      </div>
+      <div class="field" style="justify-content: center">
+        <label style="font-size:.78rem; color:var(--mut)"
+               title="By default we hide browser entries that look like the one you're already in, since the browser's UA string can't distinguish, e.g., system Firefox from Flatpak Firefox. Turn this on to see every detected install — useful only when you specifically want to switch between two installs of the same browser.">
+          <input type="checkbox" id="show-all-browsers"> Show all browser installs
+        </label>
+      </div>
+      <div class="gate-hint" id="player-hint"></div>
+    </div>
+
+    <div class="card has-card-label">
+      <span class="card-label"><span id="engine-label" class="has-tooltip">Engine</span> <span class="status" id="engine-status" style="margin-left:.3rem">…</span></span>
+      <div class="row" style="justify-content: center">
+        <label><input type="checkbox" id="autostart"> Start engine when aceman launches</label>
+      </div>
+      <div class="row" style="justify-content: center">
+        <button id="engine-toggle" disabled>…</button>
+        <span class="gate-hint" id="engine-toggle-hint"></span>
+      </div>
     </div>
   </div>
 
