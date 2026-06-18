@@ -5,6 +5,12 @@ the reply (needed by the "Restart everything" path — the bootstrap
 gates on the socket being absent, so we must die for a fresh broker
 to be spawned).
 
+``broker.respawn`` exec's the broker into a fresh copy of itself
+so a `git pull` + Restart picks up broker-side changes without a
+manual ``aceman_web_stop`` + relaunch. Guarded by an import
+pre-flight (see action body) so a syntax error in the new code
+doesn't leave the operator with no broker.
+
 ``web.restart`` is the host-side handle the web in container-mode
 uses to ask "podman restart" us — it can't restart itself.
 """
@@ -12,16 +18,27 @@ uses to ask "podman restart" us — it can't restart itself.
 from __future__ import annotations
 
 import os
+import pathlib
 import signal
 import subprocess
+import sys
 import threading
 import time
 
-from ..config import WEB_IMAGE, WEB_NAME
+from ..config import PROJECT_ROOT, WEB_IMAGE, WEB_NAME
 from ..engine_ops import container_running_named
 from ..logging_util import _log, _safe
 from .restart_helpers import pick_up_image_changes, recreate_container
 from . import register as _register
+
+
+# Path to the entry script the broker was launched from. Used by
+# action_broker_respawn so the exec'd process is the same shape
+# (same wrapper, same prctl name) as the original. Pinned at import
+# time so a malicious request can't redirect it.
+_BROKER_SCRIPT: pathlib.Path = PROJECT_ROOT / "broker" / "aceman-broker"
+# Where ``aceman_broker.main`` lives, for the preflight import probe.
+_BROKER_PACKAGE_DIR: pathlib.Path = PROJECT_ROOT / "broker"
 
 
 def action_broker_shutdown(params: "dict | None" = None) -> dict:
@@ -33,6 +50,71 @@ def action_broker_shutdown(params: "dict | None" = None) -> dict:
                      name="broker-shutdown").start()
     _log("main", "broker.shutdown: SIGTERM scheduled (200 ms)")
     return {"shutting_down": True}
+
+
+def action_broker_respawn(params: "dict | None" = None) -> dict:
+    """Replace the broker process in place with a fresh copy that
+    reads the on-disk code from scratch — used by ``/api/restart`` so
+    a ``git pull`` + Restart cycle picks up broker-side changes
+    without making the operator run ``aceman_web_stop`` first.
+
+    Pre-flight: launch a throwaway ``python -c "import
+    aceman_broker.main"`` to confirm the new code at least loads.
+    If it doesn't (syntax error, broken import), refuse the
+    respawn — the working broker stays up. The
+    operator sees the reason in the JSON reply and the broker log,
+    fixes the source, and tries again. Cheap insurance (~200 ms
+    fork + import) against the worst failure mode where bad code
+    lands and the operator is suddenly stuck without a broker.
+    """
+    preflight_cmd = (
+        f"import sys; sys.path.insert(0, {str(_BROKER_PACKAGE_DIR)!r}); "
+        f"import aceman_broker.main"
+    )
+    try:
+        check = subprocess.run(
+            [sys.executable, "-c", preflight_cmd],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+        _log("main", "broker.respawn: preflight failed: %s", e)
+        return {"respawned": False, "reason": f"preflight failed: {e}"}
+
+    if check.returncode != 0:
+        # New code can't even be imported. Don't tear down the
+        # working broker — keep serving with the OLD code so the
+        # operator has something to fix the source against.
+        stderr = _safe((check.stderr or check.stdout or "").strip())[:500]
+        _log("main", "broker.respawn: rejected by preflight: %s", stderr)
+        return {
+            "respawned": False,
+            "reason": "new broker code failed to import",
+            "stderr": stderr,
+        }
+
+    # Pre-flight clean. Schedule the actual replacement on a daemon
+    # thread so the JSON reply flushes back to the caller first.
+    def _do_respawn():
+        time.sleep(0.2)
+        _log("main", "broker.respawn: exec'ing %s", _BROKER_SCRIPT)
+        # `os.execv` replaces the whole process image — threads,
+        # sockets (closed by CLOEXEC), in-memory state all go. New
+        # process starts from scratch, rebinds the socket, ready
+        # for the next call. Env vars and CWD are preserved.
+        try:
+            os.execv(sys.executable,
+                     [sys.executable, str(_BROKER_SCRIPT)])
+        except OSError as e:
+            # If execv itself fails (file missing, perms), fall back
+            # to graceful shutdown so the wrapper-side respawn path
+            # (next aceman_web launch sees no socket → spawns fresh)
+            # still has a way out. Limping is worse than dying.
+            _log("main", "broker.respawn: execv failed: %s — SIGTERM-ing", e)
+            os.kill(os.getpid(), signal.SIGTERM)
+    threading.Thread(target=_do_respawn, daemon=True,
+                     name="broker-respawn").start()
+    _log("main", "broker.respawn: scheduled (200 ms)")
+    return {"respawned": True}
 
 
 def action_web_restart(params: "dict | None" = None) -> dict:
@@ -74,4 +156,5 @@ def action_web_restart(params: "dict | None" = None) -> dict:
 
 def register(actions: dict) -> None:
     _register(actions, "broker.shutdown", action_broker_shutdown)
+    _register(actions, "broker.respawn", action_broker_respawn)
     _register(actions, "web.restart", action_web_restart)
