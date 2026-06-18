@@ -41,13 +41,15 @@ def action_desktop_install(params: "dict | None" = None) -> dict:
     host = validate_host(params.get("host"))
     port = validate_port(params.get("port"))
     register_scheme = bool(params.get("register_scheme", True))
-    container = bool(params.get("container", False))
+    # `container` was a per-install opt-in back when the launcher
+    # defaulted to native python. It's now the launcher's default —
+    # opt out with `--native` on the host. We ignore the param if
+    # callers still send it.
 
     path = _desktop_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     body = render_desktop_entry(
         str(DESKTOP_LAUNCHER), host, port,
-        container=container,
         scheme_handler=DESKTOP_SCHEME_HANDLER,
     )
     tmp = path.with_suffix(".desktop.tmp")

@@ -2,28 +2,35 @@
 # run-web-container.sh — build (idempotent) + run the aceman web
 # frontend in a rootless podman container.
 #
-# Called by `aceman_web` when ACE_WEB_CONTAINER=1 or `--container`
-# is passed. Mirrors run-container.sh's posture: rootless, no extra
-# caps, no privileged flags, loopback-only port forward, USER NS
-# kept-id so mounted host dirs work with the user's uid.
+# Called by `aceman_web` by default (the wrapper now containerises
+# the web frontend out of the box; --native opts back to host python).
+# Mirrors run-container.sh's posture: rootless, no extra caps, no
+# privileged flags, loopback-only port forward, USER NS kept-id so
+# mounted host dirs work with the user's uid.
 #
-# Networking choice: bridge (default), NOT --network=host. Reasons:
+# Networking choice: shared user-defined bridge (aceman-net), NOT
+# --network=host. Reasons:
 #   * Same blast-radius story as the engine container — host network
 #     namespace is one fewer isolation boundary, and we don't need it.
-#   * The only host services this container talks to are (a) the
-#     acestream engine HTTP at 127.0.0.1:6878 on the host, and (b)
-#     the broker UNIX socket. The socket is mounted as a file; the
-#     engine is reached via --add-host host.containers.internal:host-gateway,
-#     which gives us a stable hostname pointing at the host's bridge IP.
-#     The python is launched with --engine http://host.containers.internal:6878
-#     so that resolution flows naturally.
+#   * The engine and web both join `aceman-net` (created by
+#     ../shared-net.sh) so the web reaches the engine directly by
+#     container name (http://$ACE_NAME:6878) over an internal podman
+#     bridge. No more host-gateway hop, no `--add-host
+#     host.containers.internal:host-gateway` widening the container's
+#     view of host services.
+#   * The only other host service the web touches is the broker UNIX
+#     socket, which is mounted as a file — no network needed at all.
 #
 # Knobs (env vars, all optional):
 #   ACE_WEB_IMAGE      image tag             (default localhost/aceman-web:vetted)
 #   ACE_WEB_NAME       container name        (default aceman-web)
 #   ACE_WEB_PORT       host port to publish  (default 8770)
-#   ACE_WEB_HOST       host bind address     (default 127.0.0.1)
-#   ACE_ENGINE         engine URL the web hits (default http://host.containers.internal:6878)
+#   ACE_WEB_HOST       host bind address     (default 127.0.0.1; 0.0.0.0 under WSL)
+#   ACE_NAME           engine container name (default ace — used for DNS)
+#   ACE_ENGINE         engine URL the web hits (default http://$ACE_NAME:6878)
+#   ACE_NETWORK        shared podman network (default aceman-net)
+#   ACE_WEB_MEMORY     podman --memory value (default 1g)
+#   ACE_WEB_PIDS       podman --pids-limit   (default 256)
 #   ACE_DETACH         podman run -d if set  (default off — foreground)
 
 set -euo pipefail
@@ -33,11 +40,21 @@ SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 # is two levels up.
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# Shared helpers (sourced for ensure_shared_network; same file backs
+# the engine launcher so both containers stay on the same network).
+PROG="run-web-container.sh"
+. "$SCRIPT_DIR/../lib.sh"
+ACE_NETWORK="${ACE_NETWORK:-aceman-net}"
+ensure_shared_network
+
 ACE_WEB_IMAGE="${ACE_WEB_IMAGE:-localhost/aceman-web:vetted}"
 ACE_WEB_NAME="${ACE_WEB_NAME:-aceman-web}"
 ACE_WEB_PORT="${ACE_WEB_PORT:-8770}"
 ACE_WEB_HOST="${ACE_WEB_HOST:-127.0.0.1}"
-ACE_ENGINE="${ACE_ENGINE:-http://host.containers.internal:6878}"
+ACE_NAME="${ACE_NAME:-ace}"
+ACE_ENGINE="${ACE_ENGINE:-http://${ACE_NAME}:6878}"
+ACE_WEB_MEMORY="${ACE_WEB_MEMORY:-1g}"
+ACE_WEB_PIDS="${ACE_WEB_PIDS:-256}"
 
 command -v podman >/dev/null || { echo "podman not installed"; exit 1; }
 
@@ -84,29 +101,107 @@ fi
 DETACH_FLAG=""
 [ -n "${ACE_DETACH:-}" ] && DETACH_FLAG="-d"
 
-# --userns=keep-id maps the in-container uid to the host's user so
-# files written under the mounted dirs are owned by the user, not
-# subuid-mapped root. --cap-drop=all + --security-opt=no-new-privileges
-# match the engine container's hardening. --read-only marks the
-# container's rootfs read-only; the four mounts below are explicitly
-# the only writable areas (and only to our own data).
+# Mounts. Each path is the smallest one the python actually touches:
+#   CONFIG  — favorites.db + config.json live here; RW required.
+#   CACHE   — web.log (we append) + broker.log (/api/log/... reads it
+#             via the host-side broker, so the directory is
+#             traversed); RW required.
+#   RUNTIME — broker.sock (AF_UNIX). The python connects() to it; the
+#             broker on the host is what created the socket. Mounted
+#             RW because some kernels treat AF_UNIX connect as
+#             needing write on the socket file.
+#
+# Each `-v` carries `:z`. Podman relabels the host directory to the
+# shared SELinux type (container_file_t) so the labelled container can
+# read/write at the file-label layer. Without it, opening favorites.db
+# fails ("unable to open database file") on Fedora-family distros
+# whose user data lives under user_home_t. `:z` (lowercase, shared)
+# instead of `:Z` because the host-side broker also writes into these
+# dirs and needs to keep working.
+#
+# Hardening flags below. Read top-to-bottom, ordered so the next
+# section's "we keep" list reads naturally.
+#
+#   --network         the shared user-defined podman bridge. Container
+#                     can reach the engine by name, NOT the host's
+#                     loopback (no host-gateway add-host).
+#   --userns=keep-id  in-container uid maps to host uid, so files
+#                     written into mounted dirs are owned by the user
+#                     instead of a subuid-mapped phantom.
+#   --cap-drop=all    drops every Linux capability. The python doesn't
+#                     need to bind low ports, change uids, raw-socket,
+#                     mount anything — nothing.
+#   --security-opt=no-new-privileges
+#                     setuid binaries can't escalate. Even if a setuid
+#                     thing ended up on disk (it doesn't, rootfs is
+#                     RO), it couldn't gain privs.
+#   --security-opt label=disable
+#                     TURNS OFF SELinux MAC for this container only.
+#                     Why: the python here connects to the host
+#                     broker's AF_UNIX socket. The broker runs as
+#                     user_t, the container would normally run as
+#                     container_t. Default policy on Fedora / RHEL /
+#                     CentOS / openSUSE does NOT allow
+#                     `container_t connectto user_t :
+#                     unix_stream_socket`, so the connect fails with
+#                     EACCES regardless of file label or :z relabel.
+#                     The alternatives (ship a custom SELinux policy
+#                     module per distro; rewrite the broker as a TCP
+#                     service with a hand-rolled auth scheme to
+#                     replace SO_PEERCRED; move the broker into a
+#                     container with full host podman access) each
+#                     cost much more than they buy. We still keep
+#                     EVERY other layer of defense (see list below).
+#                     Crucially, the ENGINE container — the actually
+#                     untrusted P2P binary — keeps its SELinux label;
+#                     this flag is for the web container only.
+#   --read-only       rootfs is RO; only the named tmpfs + the three
+#                     bind mounts are writable.
+#   --tmpfs /tmp      writable scratch for ffmpeg subprocess /
+#                     python tempfile. Capped at 64m so a runaway
+#                     can't exhaust host disk.
+#   --memory          podman cgroup cap. Caps total RSS at 1g default,
+#                     overridable via $ACE_WEB_MEMORY.
+#   --pids-limit      cgroup cap on processes; bounds a forkbomb /
+#                     runaway-ffmpeg.
+#
+# What the label=disable line actually costs: the SELinux MAC layer
+# is off for this container's processes (they run as spc_t instead of
+# container_t). Everything else still applies:
+#   * DAC: process runs as your UID, can't read root-owned files.
+#   * No Linux capabilities (cap-drop=all).
+#   * No new privs (setuid is dead).
+#   * Read-only rootfs.
+#   * Only three narrow bind mounts visible — not your $HOME, not
+#     /etc, nothing else.
+#   * Separate PID, mount, network, IPC, UTS, user namespaces.
+#   * 1g memory cap / 256 PID cap.
+#   * On the podman bridge only, no host-gateway to LAN.
+# An RCE in the python here could call the broker (intended), read
+# the three mounted dirs (already could via :z), and nothing else.
+# It can't escape to spawn host processes, can't read random $HOME
+# files, can't reach the engine's data, can't talk to anything on
+# the LAN.
 exec podman run --rm $DETACH_FLAG -i \
     --name "$ACE_WEB_NAME" \
+    --network "$ACE_NETWORK" \
     --userns=keep-id \
     --cap-drop=all \
     --security-opt=no-new-privileges \
+    --security-opt label=disable \
     --read-only --tmpfs /tmp:rw,size=64m,mode=1777 \
-    --add-host host.containers.internal:host-gateway \
+    --memory "$ACE_WEB_MEMORY" \
+    --pids-limit "$ACE_WEB_PIDS" \
     -p "$ACE_WEB_HOST:$ACE_WEB_PORT:$ACE_WEB_PORT" \
     -e XDG_CONFIG_HOME=/xdg/config \
     -e XDG_CACHE_HOME=/xdg/cache \
     -e XDG_RUNTIME_DIR=/xdg/runtime \
     -e HOME=/xdg \
-    -v "$CONFIG_DIR_HOST:$CONFIG_DIR_CTR" \
-    -v "$CACHE_DIR_HOST:$CACHE_DIR_CTR" \
-    -v "$RUNTIME_DIR_HOST:$RUNTIME_DIR_CTR" \
+    -v "$CONFIG_DIR_HOST:$CONFIG_DIR_CTR:z" \
+    -v "$CACHE_DIR_HOST:$CACHE_DIR_CTR:z" \
+    -v "$RUNTIME_DIR_HOST:$RUNTIME_DIR_CTR:z" \
     "$ACE_WEB_IMAGE" \
-    python3 web/aceman_web.py \
+    python3 -u web/aceman_web.py \
         --host 0.0.0.0 \
         --port "$ACE_WEB_PORT" \
         --engine "$ACE_ENGINE" \
