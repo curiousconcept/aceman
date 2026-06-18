@@ -14,6 +14,7 @@ import time
 
 from ..config import (
     ENGINE_URL,
+    ENSURE_IMAGE_HELPER,
     IMAGE,
     LAUNCHER_TIMEOUT,
     NAME,
@@ -25,6 +26,11 @@ from ..engine_ops import (
     container_running,
     container_state,
     engine_probe,
+    image_commit_label,
+)
+from .restart_helpers import (
+    pick_up_image_changes,
+    recreate_container,
 )
 from ..logging_util import _log, _safe
 from ..validators import validate_lines
@@ -123,24 +129,37 @@ def action_engine_restart(params: "dict | None" = None) -> dict:
     with _engine_lock:
         if not container_running():
             return {"restarted": False, "reason": "not running"}
-        _log("engine", "restart: '%s'", NAME)
-        try:
-            r = subprocess.run(
-                ["podman", "restart", "-t", "5", NAME],
-                capture_output=True, text=True, timeout=20,
-            )
-        except (FileNotFoundError, subprocess.TimeoutExpired) as e:
-            raise RuntimeError(f"podman restart failed: {e}") from e
-        if r.returncode != 0:
-            msg = _safe((r.stderr or r.stdout or "").strip())
-            raise RuntimeError(
-                f"podman restart exited {r.returncode}: "
-                f"{msg or '<no output>'}")
+        # Pick up any source-tree changes since this container was
+        # created: ensure_engine_image rebuilds + relabels the image
+        # if the working tree moved past what's labelled. If the label
+        # actually changed, plain `podman restart` is insufficient —
+        # the container is bound to the OLD image's ID and won't pick
+        # up the new layer until it's removed + run again.
+        image_changed = pick_up_image_changes("engine", IMAGE)
+        rebuilt = False
+        if image_changed:
+            _log("engine", "restart: image label moved; recreating '%s'", NAME)
+            recreate_container(NAME)
+            rebuilt = True
+        else:
+            _log("engine", "restart: '%s'", NAME)
+            try:
+                r = subprocess.run(
+                    ["podman", "restart", "-t", "5", NAME],
+                    capture_output=True, text=True, timeout=20,
+                )
+            except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+                raise RuntimeError(f"podman restart failed: {e}") from e
+            if r.returncode != 0:
+                msg = _safe((r.stderr or r.stdout or "").strip())
+                raise RuntimeError(
+                    f"podman restart exited {r.returncode}: "
+                    f"{msg or '<no output>'}")
         deadline = time.monotonic() + START_WAIT_SECONDS
         while time.monotonic() < deadline:
             if engine_probe(timeout=2):
-                _log("engine", "restart: ready")
-                return {"restarted": True}
+                _log("engine", "restart: ready (rebuilt=%s)", rebuilt)
+                return {"restarted": True, "rebuilt": rebuilt}
             time.sleep(1)
         raise RuntimeError(
             f"container restarted but engine never answered at {ENGINE_URL}")

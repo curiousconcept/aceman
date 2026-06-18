@@ -30,6 +30,9 @@ from .validators import (
 NAME = os.environ.get("ACE_NAME", "ace")
 WEB_NAME = os.environ.get("ACE_WEB_NAME", "aceman-web")
 IMAGE = os.environ.get("ACE_IMAGE", "localhost/acestream:vetted")
+# Web image tag — used by web.restart's pick_up_image_changes() to
+# detect whether ensure_web_image rebuilt the image.
+WEB_IMAGE = os.environ.get("ACE_WEB_IMAGE", "localhost/aceman-web:vetted")
 
 # Engine HTTP endpoint. Locked to loopback; see validators.
 ENGINE_URL = os.environ.get(
@@ -42,6 +45,10 @@ PROJECT_ROOT = pathlib.Path(
     or pathlib.Path(__file__).resolve().parent.parent.parent
 )
 RUN_SH = PROJECT_ROOT / "container" / "engine" / "run-container.sh"
+# Helper used by restart actions to run the same ensure_*_image
+# check the launcher wrapper runs at startup — so a Restart from
+# the web UI picks up source changes the same way a relaunch does.
+ENSURE_IMAGE_HELPER = PROJECT_ROOT / "container" / "ensure-image-helper.sh"
 
 # Timeouts + caps. None of these are user-controllable.
 MAX_REQ_BYTES = 4 * 1024        # one JSON object, plenty of headroom

@@ -86,3 +86,22 @@ def image_present() -> bool:
         return r.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
+
+
+def image_commit_label(tag: str) -> str:
+    """Return the ``aceman.commit`` label stamped on the image at
+    build time, or empty string if absent. The Restart action snapshots
+    this before/after running the rebuild helper; a different value
+    means a fresh build happened and the running container needs to
+    be recreated (not just restarted) for the new image to take."""
+    try:
+        r = subprocess.run(
+            ["podman", "image", "inspect", tag,
+             "--format", '{{index .Labels "aceman.commit"}}'],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return ""
+    if r.returncode != 0:
+        return ""
+    return (r.stdout or "").strip()

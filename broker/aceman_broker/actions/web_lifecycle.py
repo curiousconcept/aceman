@@ -17,9 +17,10 @@ import subprocess
 import threading
 import time
 
-from ..config import WEB_NAME
+from ..config import WEB_IMAGE, WEB_NAME
 from ..engine_ops import container_running_named
 from ..logging_util import _log, _safe
+from .restart_helpers import pick_up_image_changes, recreate_container
 from . import register as _register
 
 
@@ -38,21 +39,37 @@ def action_web_restart(params: "dict | None" = None) -> dict:
     if not container_running_named(WEB_NAME):
         raise RuntimeError(
             f"web container {WEB_NAME!r} is not running — nothing to restart")
-    _log("web", "restart: '%s'", WEB_NAME)
-    try:
-        r = subprocess.run(
-            ["podman", "restart", "-t", "5", WEB_NAME],
-            capture_output=True, text=True, timeout=20,
-        )
-    except FileNotFoundError as e:
-        raise RuntimeError(f"podman not on PATH: {e}") from e
-    except subprocess.TimeoutExpired as e:
-        raise RuntimeError("podman restart timed out") from e
-    if r.returncode != 0:
-        msg = _safe((r.stderr or r.stdout or "").strip())
-        raise RuntimeError(
-            f"podman restart exited {r.returncode}: {msg or '<no output>'}")
-    return {"restarted": True, "container": WEB_NAME}
+    # Pick up source changes before bouncing. pick_up_image_changes
+    # is idempotent — if nothing's moved since the running container
+    # was created, the helper is a sub-second no-op and we stay on
+    # the cheap `podman restart` path that keeps the foreground
+    # wrapper (terminal/desktop entry that exec'd into podman run)
+    # attached. Only when something actually changed do we
+    # rm+replay, which DOES drop that wrapper — accepted because the
+    # user clicked Restart to see new code, and the broker keeps the
+    # new container running.
+    image_changed = pick_up_image_changes("web", WEB_IMAGE)
+    rebuilt = False
+    if image_changed:
+        _log("web", "restart: image label moved; recreating '%s'", WEB_NAME)
+        recreate_container(WEB_NAME)
+        rebuilt = True
+    else:
+        _log("web", "restart: '%s'", WEB_NAME)
+        try:
+            r = subprocess.run(
+                ["podman", "restart", "-t", "5", WEB_NAME],
+                capture_output=True, text=True, timeout=20,
+            )
+        except FileNotFoundError as e:
+            raise RuntimeError(f"podman not on PATH: {e}") from e
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError("podman restart timed out") from e
+        if r.returncode != 0:
+            msg = _safe((r.stderr or r.stdout or "").strip())
+            raise RuntimeError(
+                f"podman restart exited {r.returncode}: {msg or '<no output>'}")
+    return {"restarted": True, "container": WEB_NAME, "rebuilt": rebuilt}
 
 
 def register(actions: dict) -> None:
