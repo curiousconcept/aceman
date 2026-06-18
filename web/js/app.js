@@ -222,16 +222,43 @@ const SEARCH_PAGE_SIZE = 5;
 // 300ms trailing-edge debounce so live typing doesn't hammer the upstream.
 const onSearchInput = debounce(() => runSearch(), 300);
 
+// Show/hide the search section based on what's in the unified input.
+// We treat the input as a free-text search query iff it's NOT a 40-hex
+// cid and NOT an acestream:// URL — parseId() returns non-null for
+// both of those cases. We ALSO hide the section while something is
+// actively playing in this tab so the video has the room.
+function refreshSearchSection() {
+  const sec = $('search-section');
+  if (!sec) return;
+  const v = $('cid-input').value || '';
+  const isCid = parseId(v) !== null;
+  const playing = !!livePlaybackTarget;
+  const wantSearch = !isCid && !playing && shouldSearch(normaliseQuery(v));
+  sec.style.display = wantSearch ? '' : 'none';
+}
+
 async function runSearch() {
-  const q = normaliseQuery($('search-input').value);
+  // The unified Watch input doubles as the search input. parseId
+  // catches cid / acestream:// values so we don't search those.
+  const raw = $('cid-input').value || '';
+  if (parseId(raw) !== null) {
+    lastSearchQuery = '';
+    $('search-results').innerHTML = '';
+    $('search-status').textContent = '';
+    refreshSearchSection();
+    return;
+  }
+  const q = normaliseQuery(raw);
   lastSearchQuery = q;
   $('search-results').innerHTML = '';
   $('search-status').textContent = '';
   console.debug('[search] query', { len: q.length, query: q });
   if (!shouldSearch(q)) {
     console.debug('[search] skipped (too short)');
+    refreshSearchSection();
     return;
   }
+  refreshSearchSection();
   $('search-status').textContent = 'searching…';
   const t0 = performance.now();
   try {
@@ -886,6 +913,11 @@ function refreshPlaybackMoveButton() {
   const livePip = $('playback-live');
   if (livePip) livePip.style.display = livePlaybackTarget ? '' : 'none';
   refreshPlayButton();
+  // When playback starts/stops, the search results section's visibility
+  // depends on it too (we hide results during playback so the video has
+  // the room). This hook is the canonical recompute point for live
+  // state, so piggyback on it.
+  refreshSearchSection();
   if (!btn || !sel) return;
   const selectedLabel = sel.selectedIndex >= 0
       ? sel.options[sel.selectedIndex].textContent
@@ -1589,21 +1621,20 @@ async function toggleDesktopEntry() {
     // Engine URL surfaces as a hover tooltip on the Engine corner-label
     // (with the .has-tooltip dashed underline as the visual hint).
     if (cfg.engine) $('engine-label').title = cfg.engine;
-    // Search sources, one per line — same hover pattern. The list
-    // comes from the server so today we surface search-ace.stream and
-    // future additions appear automatically when the backend learns
-    // about them. When empty/disabled, drop the dashed underline so
-    // the label doesn't claim there's info to hover for.
-    const searchLabel = $('search-label');
-    if (searchLabel) {
+    // Search sources, one per line. The label this used to attach to
+    // was the standalone "Find streams" card, which folded into the
+    // Watch card. We surface the hint on #search-status (the small
+    // status pill next to the Watch title) instead — it only paints
+    // when a search is active anyway.
+    const searchStatus = $('search-status');
+    if (searchStatus) {
       const srcs = Array.isArray(cfg.search_sources) ? cfg.search_sources : [];
       if (srcs.length) {
-        searchLabel.title = srcs.length === 1
+        searchStatus.title = srcs.length === 1
             ? `Source: ${srcs[0]}`
             : `Sources:\n  ${srcs.join('\n  ')}`;
       } else {
-        searchLabel.classList.remove('has-tooltip');
-        searchLabel.title = '';
+        searchStatus.title = '';
       }
     }
     const badge = describeFavouritesStorageBadge(mode, cfg.favorites_path);
@@ -1682,7 +1713,23 @@ async function toggleDesktopEntry() {
       try { await play(); } finally { hideBusy(); }
     }
   };
-  $('cid-input').addEventListener('keydown', e => { if (e.key === 'Enter') play(); });
+  // Unified Watch input — drives BOTH play (on Enter/Play-button) and
+  // search (debounced, on every keystroke when the value isn't a cid).
+  // refreshSearchSection() decides whether the results panel paints.
+  $('cid-input').addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    // Cancel any pending debounced search — Enter is an explicit
+    // action ("play this now"). If the value is a free-text query
+    // we still kick a synchronous search before Play so the user sees
+    // results immediately; play() itself bails on non-cid input
+    // anyway (parseId returns null and play surfaces "invalid id").
+    if (parseId($('cid-input').value) === null) { runSearch(); return; }
+    play();
+  });
+  $('cid-input').addEventListener('input', () => {
+    refreshSearchSection();
+    onSearchInput();
+  });
   $('save-btn').onclick = saveFav;
   $('engine-toggle').onclick = toggleEngine;
   $('autostart').onchange = saveAutostart;
@@ -1705,8 +1752,8 @@ async function toggleDesktopEntry() {
   $('fav-search').oninput = e => { favSearch = e.target.value; favPage = 0; renderFavs(); };
   $('fav-prev').onclick = () => { favPage--; renderFavs(); };
   $('fav-next').onclick = () => { favPage++; renderFavs(); };
-  $('search-input').oninput = onSearchInput;
-  $('search-input').addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(searchTimer); runSearch(); } });
+  // The old #search-input is gone — the Watch card's unified
+  // #cid-input handles both modes (see the input listeners above).
   $('search-prev').onclick = () => { searchPage--; renderSearchResults(); };
   $('search-next').onclick = () => { searchPage++; renderSearchResults(); };
   $('desktop-toggle').onclick = toggleDesktopEntry;
