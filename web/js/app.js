@@ -653,7 +653,12 @@ function setNowPlayingName(primary, sub) {
   const el = $('playback-title');
   el.textContent = '';
   if (!primary) {
-    el.textContent = 'Playback';
+    // Card title falls back to the same string the empty-state HTML
+    // uses — "Watch". Anything else here desyncs the title from the
+    // input's placeholder ("Channel name, acestream://...") and
+    // leaves the operator wondering whether a stale stream is still
+    // referenced somewhere.
+    el.textContent = 'Watch';
     return;
   }
   el.appendChild(document.createTextNode(primary));
@@ -1782,19 +1787,28 @@ async function toggleDesktopEntry() {
     if (livePlaybackTarget) {
       showBusy('Stopping…');
       try {
-        stopInBrowserPlayback();
         try { await api('/api/player/stop', { method: 'POST', body: '{}' }); }
         catch (_) { /* best-effort */ }
-        livePlaybackTarget = '';
-        refreshPlaybackMoveButton();
-        refreshPlayButton();
-        // Stopping = "I'm done watching that." The unified Watch
-        // input answers "what do you want to watch?", so an empty
-        // value is the honest post-stop state. If the operator
-        // wants the same thing back, Favourites is right below and
-        // a clean input lets them type a new search without first
-        // wiping the old cid by hand.
+        // Stop = "I'm done watching that" — clean every visible
+        // referent in one step instead of leaving stale bits behind:
+        //   clearNowPlaying()  resets the Watch card title to its
+        //                      empty state, hides the video element,
+        //                      drops the channel name from the tab
+        //                      title, kills the in-browser proxy if
+        //                      one was running, clears `current`
+        //                      (so the Save-as-fav button hides),
+        //                      and triggers refreshPlaybackMoveButton.
+        //   clearCidInput()    wipes the cid from the Watch input so
+        //                      the operator can type a new search
+        //                      without first hand-deleting the old
+        //                      value. Favourites is right below if
+        //                      they want the same thing back.
+        //   updateSaveButton() picks up the cleared `current` and
+        //                      hides the "Saved as <name>" button
+        //                      that lingered with stale text.
+        clearNowPlaying();
         clearCidInput();
+        updateSaveButton();
       } finally { hideBusy(); }
     } else {
       showBusy('Starting…');
