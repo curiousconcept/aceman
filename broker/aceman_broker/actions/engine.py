@@ -161,13 +161,15 @@ def action_engine_restart(params: "dict | None" = None) -> dict:
     with _engine_lock:
         if not container_running():
             return {"restarted": False, "reason": "not running"}
-        # Pick up any source-tree changes since this container was
-        # created: ensure_engine_image rebuilds + relabels the image
-        # if the working tree moved past what's labelled. If the label
-        # actually changed, plain `podman restart` is insufficient —
-        # the container is bound to the OLD image's ID and won't pick
-        # up the new layer until it's removed + run again.
-        image_changed = pick_up_image_changes("engine", IMAGE)
+        # `rebuild` is the explicit operator opt-in from the Restart
+        # modal's tickbox. Default false keeps a routine restart cheap
+        # (plain `podman restart`); true asks the broker to run
+        # ensure_engine_image first and recreate the container if the
+        # image label actually moved past what we have.
+        rebuild = bool((params or {}).get("rebuild", False))
+        image_changed = (
+            pick_up_image_changes("engine", IMAGE) if rebuild else False
+        )
         rebuilt = False
         if image_changed:
             _log("engine", "restart: image label moved; recreating '%s'", NAME)

@@ -585,8 +585,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
             or pathlib.Path("/.dockerenv").exists()
         )
 
-    def _handle_restart(self) -> None:
+    def _handle_restart(self, body: "dict | None" = None) -> None:
         """POST /api/restart — "restart everything that's currently up".
+
+        Accepts ``{"rebuild": bool}`` (default ``false``). When true,
+        the broker also runs ensure_*_image before bouncing each
+        container and recreates the container if the image label
+        moved — i.e. the operator explicitly asked to pick up source
+        changes. When false (the default and the modal's default
+        state), restart stays as cheap as ``podman restart`` of each
+        container and the foreground wrapper that exec'd into
+        ``podman run`` survives.
 
         Host mode: ask the broker to `podman restart` the engine, then
         ask the broker to shut itself down, then spawn a fresh
@@ -612,6 +621,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not self.engine_mgr:
             return self._error(500, "broker not configured")
         broker = self.engine_mgr.broker
+        rebuild = bool((body or {}).get("rebuild", False))
 
         if Handler._running_in_container:
             # Order matters here:
@@ -646,16 +656,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except EngineError as e:
                 _log("restart", "player.stop skipped/failed: %s", e)
             try:
-                broker.call("engine.restart", timeout=120)
+                broker.call("engine.restart",
+                            params={"rebuild": rebuild}, timeout=180)
             except EngineError as e:
                 _log("restart", "engine.restart failed (continuing): %s", e)
             try:
-                broker.call("web.restart", timeout=20)
+                broker.call("web.restart",
+                            params={"rebuild": rebuild}, timeout=180)
             except EngineError as e:
                 _log("restart", "broker web.restart failed: %s", e)
                 return self._error(500, f"broker restart failed: {e}")
-            _log("restart", "asked broker for podman restart of web container")
-            return self._send_json(202, {"restarting": True, "via": "broker"})
+            _log("restart", "asked broker for podman restart of web container (rebuild=%s)", rebuild)
+            return self._send_json(202,
+                {"restarting": True, "via": "broker", "rebuild": rebuild})
 
         # Host mode
         wrapper_path = _PROJECT_ROOT / "aceman_web"
@@ -683,8 +696,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             #    failures here shouldn't block the web/broker restart
             #    (the user can hit Start Engine after they reconnect).
             try:
-                broker.call("engine.restart", timeout=120)
-                _log("restart", "engine container restarted")
+                broker.call("engine.restart",
+                            params={"rebuild": rebuild}, timeout=180)
+                _log("restart", "engine container restarted (rebuild=%s)", rebuild)
             except EngineError as e:
                 _log("restart", "engine.restart skipped/failed: %s", e)
             # 2. Tell the broker to exit. It'll SIGTERM itself, which
@@ -1213,6 +1227,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not self.image_mgr:
                 return self._error(404, "image management disabled")
             self._send_json(200, self.image_mgr.status())
+        elif path == "/api/restart/preflight":
+            # Drives the Restart modal's "new changes detected"
+            # warning. The broker queries the image labels + the host
+            # HEAD sha and returns rebuild_recommended; the modal
+            # paints the warning when true. Defaults to
+            # rebuild_recommended=False outside a git repo (broker
+            # can't tell), so the warning stays silent on
+            # release-tarball deployments.
+            if not self.engine_mgr:
+                return self._error(404, "broker not configured")
+            try:
+                self._send_json(
+                    200,
+                    self.engine_mgr.broker.call("restart.preflight",
+                                                timeout=5))
+            except EngineError as e:
+                return self._error(502, str(e))
         else:
             self._error(404, "not found")
 
@@ -1244,7 +1275,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._send_json(200, self.image_mgr.install())
 
         if path == "/api/restart":
-            return self._handle_restart()
+            return self._handle_restart(body or {})
 
         if path == "/api/factory-reset":
             return self._factory_reset(body)

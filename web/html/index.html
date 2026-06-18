@@ -46,6 +46,29 @@
   </div>
 </div>
 
+<div id="restart-modal" class="modal-backdrop" style="display:none" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <h3>Restart aceman</h3>
+    <p>Bounces the engine container and the web frontend. Your browser
+       tab will reload itself when the new instance comes up.</p>
+    <p id="restart-rebuild-warn" style="display:none;
+       color: var(--err); font-size:.85rem; margin: .5rem 0">
+      <strong>New changes detected since these images were built.</strong>
+      Only tick "Rebuild images" if you trust the source.
+    </p>
+    <div class="install-opt">
+      <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer">
+        <input type="checkbox" id="restart-rebuild-cb">
+        Rebuild images
+      </label>
+    </div>
+    <div class="install-opt" style="display:flex; gap:.5rem; justify-content:flex-end">
+      <button id="restart-cancel">Cancel</button>
+      <button id="restart-go" class="primary">Restart</button>
+    </div>
+  </div>
+</div>
+
 <div id="install-modal" class="modal-backdrop" style="display:none" role="dialog" aria-modal="true">
   <div class="modal-card">
     <h3>Install launcher</h3>

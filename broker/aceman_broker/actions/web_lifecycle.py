@@ -25,11 +25,54 @@ import sys
 import threading
 import time
 
-from ..config import PROJECT_ROOT, WEB_IMAGE, WEB_NAME
-from ..engine_ops import container_running_named
+from ..config import IMAGE, PROJECT_ROOT, WEB_IMAGE, WEB_NAME
+from ..engine_ops import container_running_named, image_commit_label
 from ..logging_util import _log, _safe
 from .restart_helpers import pick_up_image_changes, recreate_container
 from . import register as _register
+
+
+def _current_head_sha() -> str:
+    """Resolve PROJECT_ROOT's git HEAD to a full sha. Empty if we're
+    not in a git repo. No `git rev-parse --verify` because we just
+    want the user's "now" — if the repo has been moved or rewritten,
+    the user is in an unusual state and we'd rather say "unknown"
+    than guess."""
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(PROJECT_ROOT), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=3,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return ""
+    if r.returncode != 0:
+        return ""
+    return (r.stdout or "").strip()
+
+
+def action_restart_preflight(params: "dict | None" = None) -> dict:
+    """Report whether the running images are behind the on-disk
+    source. The web UI's Restart modal uses this to decide whether to
+    paint the "new changes detected" warning next to the Rebuild
+    checkbox.
+
+    `rebuild_recommended` is True when either image's stamped
+    aceman.commit label doesn't match the current HEAD sha (or the
+    image has no label at all — built before this scheme existed).
+    Outside a git repo we return rebuild_recommended=False; we can't
+    tell, so we shouldn't nudge.
+    """
+    current = _current_head_sha()
+    engine_label = image_commit_label(IMAGE)
+    web_label = image_commit_label(WEB_IMAGE)
+    engine_drift = bool(current) and engine_label != current
+    web_drift = bool(current) and web_label != current
+    return {
+        "current_commit": current,
+        "engine_image_commit": engine_label,
+        "web_image_commit": web_label,
+        "rebuild_recommended": engine_drift or web_drift,
+    }
 
 
 # Path to the entry script the broker was launched from. Used by
@@ -121,16 +164,15 @@ def action_web_restart(params: "dict | None" = None) -> dict:
     if not container_running_named(WEB_NAME):
         raise RuntimeError(
             f"web container {WEB_NAME!r} is not running — nothing to restart")
-    # Pick up source changes before bouncing. pick_up_image_changes
-    # is idempotent — if nothing's moved since the running container
-    # was created, the helper is a sub-second no-op and we stay on
-    # the cheap `podman restart` path that keeps the foreground
-    # wrapper (terminal/desktop entry that exec'd into podman run)
-    # attached. Only when something actually changed do we
-    # rm+replay, which DOES drop that wrapper — accepted because the
-    # user clicked Restart to see new code, and the broker keeps the
-    # new container running.
-    image_changed = pick_up_image_changes("web", WEB_IMAGE)
+    # `rebuild` is an explicit operator opt-in from the Restart modal's
+    # tickbox. Default false so a routine restart stays cheap and the
+    # foreground wrapper (terminal / desktop entry that exec'd into
+    # podman run) survives. true means "I trust the source — rebuild
+    # the image before bouncing"; in that case pick_up_image_changes
+    # runs ensure_web_image and we recreate the container if the
+    # image label actually moved.
+    rebuild = bool((params or {}).get("rebuild", False))
+    image_changed = pick_up_image_changes("web", WEB_IMAGE) if rebuild else False
     rebuilt = False
     if image_changed:
         _log("web", "restart: image label moved; recreating '%s'", WEB_NAME)
@@ -157,4 +199,5 @@ def action_web_restart(params: "dict | None" = None) -> dict:
 def register(actions: dict) -> None:
     _register(actions, "broker.shutdown", action_broker_shutdown)
     _register(actions, "broker.respawn", action_broker_respawn)
+    _register(actions, "restart.preflight", action_restart_preflight)
     _register(actions, "web.restart", action_web_restart)

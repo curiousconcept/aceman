@@ -1792,13 +1792,32 @@ async function toggleDesktopEntry() {
       '</div>';
   };
 
-  // Restart: ask the server to spawn a fresh wrapper with the same
-  // argv. The new wrapper hits the port already in use and falls back
-  // to the existing port-collision takeover, which POSTs /api/shutdown
-  // to *us* with stop_engine=false. So this code just kicks the chain
-  // off and replaces the page with a "reconnecting…" notice.
-  $('server-restart').onclick = async () => {
-    if (!confirm("Restart aceman? (engine container stays running)")) return;
+  // Restart: opens a modal that lets the operator pick whether to
+  // rebuild the images before bouncing. Default is "just bounce" —
+  // rebuilding is opt-in because it (a) takes longer and (b) bakes
+  // whatever's currently on disk into the image, which only makes
+  // sense if the operator trusts those changes. The modal probes
+  // /api/restart/preflight to decide whether to paint the "new
+  // changes detected" warning next to the checkbox.
+  async function openRestartModal() {
+    $('restart-modal').style.display = 'flex';
+    $('restart-rebuild-cb').checked = false;
+    $('restart-rebuild-warn').style.display = 'none';
+    try {
+      const r = await api('/api/restart/preflight');
+      if (r && r.rebuild_recommended) {
+        $('restart-rebuild-warn').style.display = '';
+      }
+    } catch (_) { /* preflight is best-effort; no warning if it fails */ }
+  }
+  function closeRestartModal() {
+    $('restart-modal').style.display = 'none';
+  }
+  $('server-restart').onclick = openRestartModal;
+  $('restart-cancel').onclick = closeRestartModal;
+  $('restart-go').onclick = async () => {
+    const rebuild = $('restart-rebuild-cb').checked;
+    closeRestartModal();
     const btn = $('server-restart');
     btn.disabled = true;
     btn.textContent = 'Restarting…';
@@ -1808,23 +1827,30 @@ async function toggleDesktopEntry() {
     // user a tempting "Start engine" button mid-restart.
     sessionStorage.setItem(KEYS.RESTARTED_AT, String(Date.now()));
     try {
-      await api('/api/restart', { method: 'POST', body: '{}' });
+      await api('/api/restart', {
+        method: 'POST',
+        body: JSON.stringify({ rebuild }),
+      });
     } catch (_) { /* connection close is expected */ }
     document.body.innerHTML =
       '<div style="text-align:center;padding:3rem;color:#aaa;' +
       'font:14px/1.5 system-ui,sans-serif">' +
       '<h2 style="color:#eee">Restarting…</h2>' +
       '<p>Reconnecting in a few seconds.</p></div>';
-    // Poll until the new instance responds, then reload.
+    // Poll until the new instance responds, then reload. The probe
+    // window is wider when rebuild=true because podman build (even
+    // with the layer cache hot) can add a handful of seconds.
     const start = Date.now();
+    const timeoutMs = rebuild ? 180_000 : 30_000;
     const ping = async () => {
-      if (Date.now() - start > 30000) {
+      if (Date.now() - start > timeoutMs) {
         document.body.innerHTML =
           '<div style="text-align:center;padding:3rem;color:#aaa;' +
           'font:14px/1.5 system-ui,sans-serif">' +
           '<h2 style="color:#eee">Restart timed out</h2>' +
-          '<p>The new instance didn\'t come up within 30 s. Check ' +
-          'the terminal or <code>tools/tail-web.sh</code>.</p></div>';
+          '<p>The new instance didn\'t come up within '
+          + Math.round(timeoutMs / 1000)
+          + ' s. Check the terminal or <code>tools/tail-web.sh</code>.</p></div>';
         return;
       }
       try {
