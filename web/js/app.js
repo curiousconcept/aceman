@@ -268,8 +268,11 @@ const onSearchInput = debounce(() => runSearch(), 300);
 // Show/hide the search section based on what's in the unified input.
 // We treat the input as a free-text search query iff it's NOT a 40-hex
 // cid and NOT an acestream:// URL — parseId() returns non-null for
-// both of those cases. We ALSO hide the section while something is
-// actively playing in this tab so the video has the room.
+// both of those cases. Results stay visible during playback so the
+// operator can hunt for a new channel while one is already on screen
+// (the previous hide-while-playing behaviour was friction once the
+// Watch input was the ONLY search affordance — there was no other
+// way to look for something new without stopping first).
 //
 // When the section is hidden we also blank the "N results" status
 // pill in the card title; otherwise the stale count lingers after
@@ -280,13 +283,33 @@ function refreshSearchSection() {
   if (!sec) return;
   const v = $('cid-input').value || '';
   const isCid = parseId(v) !== null;
-  const playing = !!livePlaybackTarget;
-  const wantSearch = !isCid && !playing && shouldSearch(normaliseQuery(v));
+  const wantSearch = !isCid && shouldSearch(normaliseQuery(v));
   sec.style.display = wantSearch ? '' : 'none';
   if (!wantSearch) {
     const status = $('search-status');
     if (status) status.textContent = '';
   }
+}
+
+// Show/hide the explicit ✕ clear button next to the Watch input.
+// Always visible (when there's a value) instead of relying on the
+// native type=search × — Firefox hides that on blur, mobile
+// browsers often skip it entirely, and a discoverable single click
+// matters more than the native pixels.
+function refreshClearButton() {
+  const btn = $('cid-clear');
+  if (!btn) return;
+  btn.style.display = $('cid-input').value ? '' : 'none';
+}
+
+function clearCidInput() {
+  const input = $('cid-input');
+  if (!input) return;
+  input.value = '';
+  input.focus();
+  refreshSearchSection();
+  refreshClearButton();
+  onSearchInput();
 }
 
 async function runSearch() {
@@ -963,11 +986,14 @@ function refreshPlaybackMoveButton() {
   const livePip = $('playback-live');
   if (livePip) livePip.style.display = livePlaybackTarget ? '' : 'none';
   refreshPlayButton();
-  // When playback starts/stops, the search results section's visibility
-  // depends on it too (we hide results during playback so the video has
-  // the room). This hook is the canonical recompute point for live
-  // state, so piggyback on it.
+  // Canonical recompute point for live state. Refresh the search
+  // section visibility (depends on input value) AND the ✕ clear
+  // button (depends on input value too) from here so anything that
+  // changes cid-input programmatically — play(), play-on-load,
+  // search-row click — gets these updated even if no `input` event
+  // fired.
   refreshSearchSection();
+  refreshClearButton();
   if (!btn || !sel) return;
   const selectedLabel = sel.selectedIndex >= 0
       ? sel.options[sel.selectedIndex].textContent
@@ -1762,6 +1788,13 @@ async function toggleDesktopEntry() {
         livePlaybackTarget = '';
         refreshPlaybackMoveButton();
         refreshPlayButton();
+        // Stopping = "I'm done watching that." The unified Watch
+        // input answers "what do you want to watch?", so an empty
+        // value is the honest post-stop state. If the operator
+        // wants the same thing back, Favourites is right below and
+        // a clean input lets them type a new search without first
+        // wiping the old cid by hand.
+        clearCidInput();
       } finally { hideBusy(); }
     } else {
       showBusy('Starting…');
@@ -1783,8 +1816,10 @@ async function toggleDesktopEntry() {
   });
   $('cid-input').addEventListener('input', () => {
     refreshSearchSection();
+    refreshClearButton();
     onSearchInput();
   });
+  $('cid-clear').onclick = clearCidInput;
   $('save-btn').onclick = saveFav;
   $('engine-toggle').onclick = toggleEngine;
   $('autostart').onchange = saveAutostart;
