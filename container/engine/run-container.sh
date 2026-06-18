@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Run the acestream engine in a rootless Podman container with a
 # restricted profile: no caps, no privileges, memory cap, loopback-only
-# port. P2P egress only — no inbound port mapping.
+# port. P2P egress only by default — no inbound port mapping unless
+# ACE_P2P_PORT is set.
 #
 # Knobs (env vars, all optional):
 #   ACE_IMAGE        container image tag       (default localhost/acestream:vetted)
@@ -16,11 +17,24 @@
 #                                               engine via the WSL guest IP).
 #                                               Override with 127.0.0.1 to
 #                                               force loopback-only even on WSL.
+#   ACE_P2P_PORT     host port to publish for  (default unset = closed; opt-in)
+#                    inbound P2P swarm. Engine
+#                    binds 8621 internally
+#                    (hardcoded); ACE_P2P_PORT
+#                    controls the host port
+#                    podman binds.  See README
+#                    for router-forwarding
+#                    guidance.  Trade-off:
+#                    opening this widens the
+#                    engine container's attack
+#                    surface from outbound-only
+#                    to receiving unsolicited
+#                    swarm packets. Container
+#                    hardening (cap-drop=all,
+#                    read-only, no-new-privs,
+#                    shared-net isolation)
+#                    still applies.
 #
-# The engine's P2P swarm port (8621 TCP+UDP) is also hardcoded and is
-# deliberately *not* published — the swarm sees only outbound connections
-# from the container. Inbound P2P would require a VPN sidecar (e.g.
-# Gluetun) sharing its netns, which would handle ports itself.
 #   ACE_MEMORY       podman --memory value     (default 5g)
 #   ACE_CACHE_SIZE   tmpfs size for engine     (default 3g; was 2g — bumped
 #                    cache dir; passed to       so a single live stream's
@@ -33,6 +47,15 @@
 
 set -euo pipefail
 
+# Shared helpers — WSL detection, port validation, network ensure.
+# Loading this also makes `ensure_shared_network` available so the
+# engine joins the same bridge as the web container.
+_SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+PROG="run-container.sh"
+. "$_SCRIPT_DIR/../lib.sh"
+ACE_NETWORK="${ACE_NETWORK:-aceman-net}"
+ensure_shared_network
+
 IMAGE="${ACE_IMAGE:-localhost/acestream:vetted}"
 NAME="${ACE_NAME:-ace}"
 # ACE_PORT is the old name — accept it as a fallback for callers that
@@ -44,26 +67,25 @@ CACHE_SIZE="${ACE_CACHE_SIZE:-3g}"
 # Bind-host default: loopback everywhere except WSL.
 #
 # Under WSL, the engine has to be reachable on the WSL guest IP so a
-# Windows-side player (VLC over the URL printed by `aceman --wsl`) can
-# connect. 127.0.0.1 inside WSL2 isn't routable from Windows, so the
-# default flips to 0.0.0.0 there. The override is still available
-# (ACE_API_HOST=127.0.0.1) for operators who want loopback only.
+# Windows-side player (VLC over the URL printed by `aceman` under
+# auto-WSL mode) can connect. 127.0.0.1 inside WSL2 isn't routable
+# from Windows, so the default flips to 0.0.0.0 there. Override
+# either with ACE_API_HOST=127.0.0.1 (loopback only) or with
+# ACE_DISABLE_WSL=1 (treat WSL as plain Linux — also flips aceman
+# and aceman_web back to non-WSL behaviour).
 #
 # Outside WSL the default stays 127.0.0.1 — keeping the engine
 # unreachable from any external interface is the project's whole
 # threat-model premise; we never widen by accident.
-_default_bind="127.0.0.1"
-if grep -qiE "microsoft|wsl" /proc/sys/kernel/osrelease 2>/dev/null; then
-    _default_bind="0.0.0.0"
+if is_wsl && [ "${ACE_DISABLE_WSL:-0}" != 1 ]; then
+    API_HOST="${ACE_API_HOST:-0.0.0.0}"
+else
+    API_HOST="${ACE_API_HOST:-127.0.0.1}"
 fi
-API_HOST="${ACE_API_HOST:-$_default_bind}"
-unset _default_bind
 
 # Validate the port-ish int so a typo doesn't reach podman as a confusing
 # message three layers down.
-case "$API_PORT" in
-    ''|*[!0-9]*) echo "run-container.sh: ACE_API_PORT must be an integer: $API_PORT" >&2; exit 1 ;;
-esac
+validate_port "$API_PORT" "ACE_API_PORT"
 
 # Validate the bind-host as either 0.0.0.0 or a single IPv4. Reject
 # arbitrary hostnames so a stray DNS entry can't quietly point at a
@@ -74,16 +96,31 @@ case "$API_HOST" in
     *) echo "run-container.sh: ACE_API_HOST must be an IPv4 (or ::1), got: $API_HOST" >&2; exit 1 ;;
 esac
 
+# Optional inbound P2P swarm port. Default: closed. Container side is
+# 8621 (engine hardcodes its swarm bind to 8621). The user picks the
+# host-side port via ACE_P2P_PORT; for the announcement <-> NAT chain
+# to actually work, that should be 8621 too (the engine announces
+# 8621 to the swarm; peers won't try a different external port). See
+# the header for the threat-model trade-off.
+P2P_PORT_FLAGS=()
+if [ -n "${ACE_P2P_PORT:-}" ]; then
+    validate_port "$ACE_P2P_PORT" "ACE_P2P_PORT"
+    P2P_PORT_FLAGS=(
+        -p "${API_HOST}:${ACE_P2P_PORT}:8621/tcp"
+        -p "${API_HOST}:${ACE_P2P_PORT}:8621/udp"
+    )
+fi
+
 # Convert a podman-style size ("3g" / "512m" / "1024k" / bare bytes) to
 # bytes for the engine's --disk-cache-limit. The engine wants raw bytes.
+validate_size_spec "$CACHE_SIZE" "ACE_CACHE_SIZE"
 size_to_bytes() {
     local s="${1,,}"
     case "$s" in
         *g) printf '%d' "$(( ${s%g} * 1024 * 1024 * 1024 ))" ;;
         *m) printf '%d' "$(( ${s%m} * 1024 * 1024 ))" ;;
         *k) printf '%d' "$(( ${s%k} * 1024 ))" ;;
-        ''|*[!0-9]*) echo "run-container.sh: invalid size: $1" >&2; exit 1 ;;
-        *)  printf '%d' "$s" ;;
+        *)  printf '%d' "$s" ;;  # validated above as digits-only
     esac
 }
 CACHE_BYTES="$(size_to_bytes "$CACHE_SIZE")"
@@ -109,7 +146,9 @@ detach_flag=()
 # --disable-sentry), so we only specify the additions here.
 exec podman run --rm "${detach_flag[@]}" \
     --name "$NAME" \
+    --network "$ACE_NETWORK" \
     -p "${API_HOST}:${API_PORT}:6878" \
+    "${P2P_PORT_FLAGS[@]}" \
     --cap-drop=ALL \
     --security-opt no-new-privileges \
     --read-only \

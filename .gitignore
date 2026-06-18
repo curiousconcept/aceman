@@ -5,6 +5,7 @@ dist/engine.tar.gz
 
 # Claude Code tooling state (per-clone, not source).
 .claude/
+CLAUDE.md
 claude resume*.txt
 
 # Python bytecode / build artefacts.

@@ -2,9 +2,9 @@
 
 Generates the ``aceman.desktop`` file the broker writes to
 ``~/.local/share/applications/``. Pure function: takes the launcher
-path, host, port, container-mode flag, and scheme-handler MIME type,
-returns the file content as a string. No I/O — the caller is
-responsible for the actual write.
+path, host, port, and scheme-handler MIME type, returns the file
+content as a string. No I/O — the caller is responsible for the
+actual write.
 
 Splitting the generator from the file write is the security
 prerequisite for testing: the assertions about what *appears* in
@@ -22,8 +22,7 @@ DESKTOP_SCHEME_HANDLER = "x-scheme-handler/acestream"
 
 def render_desktop_entry(
         launcher_path: str, host: str, port: int,
-        *, container: bool = False,
-        scheme_handler: str = DESKTOP_SCHEME_HANDLER) -> str:
+        *, scheme_handler: str = DESKTOP_SCHEME_HANDLER) -> str:
     """Return the full body of ``aceman.desktop``.
 
     Args:
@@ -31,11 +30,12 @@ def render_desktop_entry(
             Quoted before splicing into Exec=.
         host: --host argument for the launcher. Quoted before
             splicing into Exec=. Validate via ``validators.validate_host``
-            BEFORE calling this function.
+            BEFORE calling this function. In container mode (the
+            launcher's default) the launcher reads this as the host
+            bind for the published port; in --native mode it's the
+            python --host value directly.
         port: --port argument. Coerced to ``str`` — caller should
             validate with ``validators.validate_port`` first.
-        container: append ``--container`` to the Exec line so the
-            launcher routes through container/aceman-web/run-web-container.sh.
         scheme_handler: the MimeType= value. Defaults to the
             acestream scheme; exposed as a parameter so tests can
             verify what gets emitted.
@@ -45,10 +45,8 @@ def render_desktop_entry(
         "--open-browser",
         "--host", desktop_quote_arg(host),
         "--port", str(port),
+        "%u",
     ]
-    if container:
-        parts.append("--container")
-    parts.append("%u")
     exec_line = " ".join(parts)
     return (
         "[Desktop Entry]\n"

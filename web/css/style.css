@@ -1,5 +1,13 @@
   :root { color-scheme: light dark;
-          --bg:#111;--fg:#eee;--mut:#888;--acc:#4af;
+          --bg:#111;--fg:#eee;--mut:#888;
+          /* Primary-action accent (filled button backgrounds, hover-
+             tint colour, rename-input border). Pinned to the same
+             dirty-mustard value as --hover so the whole UI reads as
+             one tone — no blue left over anywhere. Kept as a
+             separate variable so a future redesign can drift the
+             "primary action" colour without retouching every hover
+             highlight. */
+          --acc:#b59238;
           /* Dirty-mustard accent used on input-focus rings and button
              hover borders. Lifted into a variable so all the places
              that pick up "hover or focus highlight" stay in sync. */

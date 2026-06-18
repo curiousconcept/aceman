@@ -743,12 +743,30 @@ function renderPlaybackTargets() {
   }
   sel.disabled = false;
 
-  const wanted = _currentTargetValue();
-  if (wanted && Array.from(sel.options).some(o => o.value === wanted)) {
+  // In WSL mode the Player card is hidden — but we still need a sane
+  // default selection for the Play button to use. Every detected
+  // external player / browser belongs to the Linux side and isn't
+  // reachable from the Windows browser viewing this page; the only
+  // target that actually works is the in-tab mpegts.js stream. Force
+  // it here and persist, so a stale `default_player: vlc` left over
+  // from a previous non-WSL session doesn't silently break Play.
+  const wanted = isWslMode ? 'browser' : _currentTargetValue();
+  const wantedAvailable = wanted
+      && Array.from(sel.options).some(o => o.value === wanted);
+  if (wantedAvailable) {
     sel.value = wanted;
   } else if (sel.options.length) {
     sel.value = sel.options[0].value;
     persistPlaybackTarget(sel.value, /*silent=*/true);
+  }
+  // Independent of the path above: if we're in WSL and the persisted
+  // config still names a Linux-side target, rewrite it to 'browser'
+  // so the next /api/config read agrees with what we just selected.
+  const wslConfigDrift = isWslMode
+      && wantedAvailable
+      && cfg && cfg.playback_mode !== 'browser';
+  if (wslConfigDrift) {
+    persistPlaybackTarget('browser', /*silent=*/true);
   }
   refreshPlaybackMoveButton();
 }
@@ -1558,10 +1576,16 @@ async function toggleDesktopEntry() {
     $('storage-badge').title = badge.title;
     // Hide Linux-desktop-only affordances when the server told us
     // this session is being served to a Windows-side browser.
+    // Also hide the Player card — every option in it (system VLC, mpv,
+    // Linux browsers, in-tab proxy targeting localhost) assumes the
+    // browser runs on the same machine as the engine. From a Windows
+    // browser it'd just be confusing UI for things that can't work.
     isWslMode = !!cfg.is_wsl;
     if (isWslMode) {
       const row = $('desktop-row');
       if (row) row.style.display = 'none';
+      const card = $('player-card');
+      if (card) card.style.display = 'none';
     }
   } catch (e) {
     showError('Could not contact backend: ' + e.message);

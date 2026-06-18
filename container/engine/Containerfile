@@ -19,6 +19,16 @@ RUN mkdir -p /opt/acestream \
     && rm /opt/engine.tar.gz \
     && chmod +x /opt/acestream/start-engine /opt/acestream/acestreamengine
 
+# Engine writes engine_runtime.json next to its binaries at runtime.
+# With --read-only rootfs that EROFS's; redirect the path into the
+# tmpfs that's already mounted at /tmp during `podman run`. The
+# symlink target doesn't have to exist yet — the engine creates the
+# file on first write, and a fresh tmpfs per container start is
+# exactly the right lifetime for ephemeral runtime state. This does
+# NOT grant the engine write access to its binary directory; the
+# rootfs stays RO, only the redirected single path becomes writable.
+RUN ln -sf /tmp/engine_runtime.json /opt/acestream/engine_runtime.json
+
 RUN useradd -m -u 1000 ace \
     && mkdir -p /home/ace/.ACEStream \
     && chown -R ace:ace /home/ace /opt/acestream

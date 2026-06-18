@@ -13,22 +13,35 @@
 #                                        # acestream://<id>, or a saved fav name
 #   aceman --url <transport_url>       # play a transport URL (.acelive, ...)
 #   aceman --infohash <infohash>       # play a 40-hex BT infohash
-#   aceman --wsl <aceid>               # WSL-only: print the engine playback
-#                                        # URL with authority rewritten to
-#                                        # the WSL guest IP (from
-#                                        # `hostname -I`) so Windows VLC can
-#                                        # open it. Starts the engine if
-#                                        # needed, but does NOT launch a
-#                                        # player or take the wrapper lock.
+#   aceman --disable-wsl               # force normal play even when WSL is
+#                                        # detected (see WSL note below)
+#
+# WSL behaviour: when /proc/sys/kernel/osrelease says we're inside WSL,
+# every play invocation automatically switches to URL-print mode instead
+# of trying to launch a player. The printed URL has its authority
+# rewritten to the WSL guest IP (from `hostname -I`) so a Windows-side
+# player (VLC, mpv, browser) can open it. The engine starts if needed,
+# but we don't take the wrapper lock — sessions belong to whatever's on
+# the Windows side. Pass `--disable-wsl` (or set ACE_DISABLE_WSL=1) to
+# force the normal Linux play path inside WSL for experimentation.
 #
 #   aceman fav list                    # list saved favourites
 #   aceman fav rm <name>               # delete a favourite (alias: delete)
 #   aceman fav rename <old> <new>      # rename a saved favourite
 #
-#   aceman engine start [--ram NG] [--cache NG] [--port N]
+#   aceman engine start [--ram NG] [--cache NG] [--port N] [--p2p-port N]
 #   aceman engine stop
-#   aceman engine restart [--ram NG] [--cache NG] [--port N]
+#   aceman engine restart [--ram NG] [--cache NG] [--port N] [--p2p-port N]
 #   aceman engine status               # container + API + memory + cache
+#
+# --p2p-port N (also: ACE_P2P_PORT=N) publishes the engine's swarm
+# port on the host so the swarm can reach you inbound. Engine binds
+# 8621 internally, so set N=8621 and forward 8621 on your router.
+# Closed by default — opening it widens the engine container's
+# attack surface (it goes from outbound-only to receiving unsolicited
+# packets from the internet); the rest of the container hardening
+# (cap-drop=all, read-only, no-new-privileges, shared-net isolation)
+# still applies.
 #
 # Favourites live in $XDG_CONFIG_HOME/aceman/favorites (default
 # ~/.config/aceman/favorites). One entry per line, tab-separated:
@@ -323,44 +336,19 @@ engine_up() {
         >/dev/null 2>&1
 }
 
-# Accept podman-style sizes ('3g' / '512m' / '1024k' / bare bytes). Fails
-# clearly here so the user doesn't get an opaque podman error three layers
-# down. $2 is a label used in the error message ("ram", "cache", ...).
-validate_size() {
-    [[ "$1" =~ ^[0-9]+[gGmMkK]?$ ]] \
-        || die "$2 must look like 3g / 512m / 1024k / bare bytes (got: $1)"
-}
-
 # Invoke run-container.sh in detached mode and poll until the engine
 # answers. Caller checks podman exists and the container isn't already up.
 # ACE_MEMORY / ACE_CACHE_SIZE / ACE_API_PORT in env get forwarded by the
 # launcher.
 RUN_SH="$SCRIPT_DIR/container/engine/run-container.sh"
-ENGINE_CTX="$SCRIPT_DIR/container/engine"
-ENGINE_IMAGE_TAG="${ACE_IMAGE:-localhost/acestream:vetted}"
+PROG="aceman"
+ACELIB_PROJECT_ROOT="$SCRIPT_DIR"
 
-# Build the engine image from container/engine/ if podman doesn't
-# already know about it. Idempotent — a present image is a no-op.
-# Surfaces build progress on stderr so a slow first run doesn't look
-# like the script has hung. Caller has already confirmed `podman` is
-# on PATH.
-ensure_engine_image() {
-    if podman image exists "$ENGINE_IMAGE_TAG" 2>/dev/null; then
-        return 0
-    fi
-    [ -d "$ENGINE_CTX" ] || die "engine build context missing: $ENGINE_CTX"
-    [ -f "$ENGINE_CTX/Containerfile" ] || die "Containerfile missing in $ENGINE_CTX"
-    # The engine tarball is expected at container/engine/dist/engine.tar.gz
-    # (see README: 'Engine tarball'). Refuse early with a clear message
-    # instead of letting podman fail mid-build several minutes in.
-    [ -f "$ENGINE_CTX/dist/engine.tar.gz" ] \
-        || die "engine tarball missing: $ENGINE_CTX/dist/engine.tar.gz
-download from acestream.media and place it at the path above, then re-run."
-    echo "aceman: building engine image '$ENGINE_IMAGE_TAG' (first run only, ~2 min)..." >&2
-    ( cd "$ENGINE_CTX" \
-      && podman build -t "$ENGINE_IMAGE_TAG" -f Containerfile . ) >&2 \
-        || die "engine image build failed; see output above"
-}
+# Shared lib (image builds, network helpers, port/size validators, WSL
+# detection). The helpers under "validate_*" return non-zero on bad
+# input; `set -e` propagates that as a wrapper exit, matching the
+# previous `die`-based behaviour without duplicating regexes here.
+. "$SCRIPT_DIR/container/lib.sh"
 
 start_engine_now() {
     command -v podman >/dev/null || die "podman not installed"
@@ -380,18 +368,25 @@ engine_cmd_start() {
         case "$1" in
             --ram|--memory)
                 [ $# -ge 2 ] || die "missing value after $1"
-                validate_size "$2" "ram"
+                validate_size_spec "$2" "ram"
                 export ACE_MEMORY="$2"; shift 2 ;;
             --cache)
                 [ $# -ge 2 ] || die "missing value after $1"
-                validate_size "$2" "cache"
+                validate_size_spec "$2" "cache"
                 export ACE_CACHE_SIZE="$2"; shift 2 ;;
             --port)
                 [ $# -ge 2 ] || die "missing value after $1"
-                [[ "$2" =~ ^[0-9]+$ ]] || die "port must be a number"
-                [ "$2" -ge 1 ] && [ "$2" -le 65535 ] \
-                    || die "port out of range (1-65535)"
+                validate_port "$2" "port"
                 export ACE_PORT="$2"; shift 2 ;;
+            --p2p-port)
+                [ $# -ge 2 ] || die "missing value after $1"
+                validate_port "$2" "p2p-port"
+                # Forwarded to run-container.sh, which publishes
+                # ACE_P2P_PORT TCP+UDP on the host. Engine inside the
+                # container always binds 8621 (hardcoded). See
+                # README / `aceman engine start --help` for router
+                # forwarding guidance.
+                export ACE_P2P_PORT="$2"; shift 2 ;;
             *) die "unknown option to engine start: $1" ;;
         esac
     done
@@ -451,6 +446,16 @@ engine_cmd_status() {
                 df -h /home/ace/.ACEStream 2>/dev/null \
                 | awk 'NR==2 {printf "%s used / %s (%s full)", $3, $2, $5}')"
         [ -n "$cache" ] && echo "cache:     $cache"
+        # Inbound P2P: list the host port(s) podman is publishing to
+        # container port 8621. Empty output means the engine is in
+        # outbound-only mode (the default; ACE_P2P_PORT unset).
+        local p2p
+        p2p="$(podman port "$ACE_NAME" 8621/tcp 2>/dev/null | head -n1)"
+        if [ -n "$p2p" ]; then
+            echo "p2p:       inbound open at $p2p (tcp+udp) — forward this on your router"
+        else
+            echo "p2p:       outbound only (set ACE_P2P_PORT=8621 to open inbound)"
+        fi
     fi
 }
 
@@ -497,9 +502,9 @@ engine_dispatch() {
 aceman engine — control the acestream container
 
 Usage:
-  aceman engine start [--ram NG] [--cache NG] [--port N]
+  aceman engine start [--ram NG] [--cache NG] [--port N] [--p2p-port N]
   aceman engine stop
-  aceman engine restart [--ram NG] [--cache NG] [--port N]
+  aceman engine restart [--ram NG] [--cache NG] [--port N] [--p2p-port N]
   aceman engine status
 EOF
             ;;
@@ -610,10 +615,29 @@ engine_authority="${ENGINE#http://}"
 # something already in the favourites file.
 CID=""
 FROM_FAV=0
-# --wsl mode short-circuits the player launch and prints a URL whose
-# authority is rewritten to the WSL guest IP. Set in the case dispatch
-# below; consumed in the engine-request path.
-WSL_MODE=0
+# WSL mode short-circuits the player launch and prints a URL whose
+# authority is rewritten to the WSL guest IP. Default: auto — on if
+# /proc/sys/kernel/osrelease says we're inside WSL, off everywhere
+# else. `--disable-wsl` (parsed from argv below) or ACE_DISABLE_WSL=1
+# forces the normal Linux play path inside WSL for experimentation.
+if is_wsl && [ "${ACE_DISABLE_WSL:-0}" != 1 ]; then
+    WSL_MODE=1
+else
+    WSL_MODE=0
+fi
+# Strip --disable-wsl from argv before the usual parsing — it's a
+# wrapper-only knob, not something the engine-request path needs to
+# see. Keeping this its own loop so the main case-dispatch below stays
+# focused on "what to play."
+_argv=()
+for _arg in "$@"; do
+    case "$_arg" in
+        --disable-wsl) WSL_MODE=0 ;;
+        *) _argv+=("$_arg") ;;
+    esac
+done
+set -- "${_argv[@]}"
+unset _argv _arg
 
 # Refuse control bytes in any positional arg. They have no legitimate
 # place in a cid, a URL, a favourite name, or a subcommand argument.
@@ -651,25 +675,6 @@ case "${1:-}" in
         [ $# -ge 2 ] || die "missing infohash after --infohash"
         [[ "$2" =~ ^[A-Fa-f0-9]{40}$ ]] || die "infohash must be 40 hex chars"
         param="infohash=$2" ;;
-    --wsl)
-        [ $# -ge 2 ] || die "missing aceid after --wsl"
-        # Refuse outside WSL. The whole point is to rewrite the URL with
-        # the WSL guest IP — anywhere else, just use the engine URL.
-        if ! grep -qiE "microsoft|wsl" /proc/sys/kernel/osrelease 2>/dev/null; then
-            die "--wsl mode only works inside WSL"
-        fi
-        # Accept either a bare 40-hex cid or acestream://<40hex>.
-        _wsl_id="$2"
-        case "$_wsl_id" in
-            acestream://*) _wsl_id="${_wsl_id#acestream://}"; _wsl_id="${_wsl_id%/}" ;;
-        esac
-        [[ "$_wsl_id" =~ ^[A-Fa-f0-9]{40}$ ]] \
-            || die "--wsl: aceid must be a 40-hex content id (or acestream://<id>)"
-        [ $# -eq 2 ] || die "extra arguments after --wsl <aceid>"
-        CID="$_wsl_id"
-        WSL_MODE=1
-        param="id=$CID"
-        unset _wsl_id ;;
     --*)
         die "unknown option: $1
 try: aceman --help" ;;
@@ -795,8 +800,8 @@ playback_url="$(force_engine "$playback_url")"
 # stdout would tempt callers to script teardown from outside the
 # session ownership model.
 if [ "$WSL_MODE" -eq 1 ]; then
-    wsl_ip="$(hostname -I 2>/dev/null | awk '{print $1; exit}')"
-    [ -n "$wsl_ip" ] || die "could not resolve WSL guest IP (hostname -I empty)"
+    wsl_ip="$(wsl_guest_ip)" \
+        || die "could not resolve WSL guest IP (hostname -I empty)"
     # Engine port from the configured authority (host:port).
     port="${engine_authority##*:}"
     wsl_authority="${wsl_ip}:${port}"

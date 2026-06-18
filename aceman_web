@@ -7,15 +7,37 @@
 # symlinks so the wrapper can be itself symlinked into ~/bin.
 #
 # Flags (consumed here, not forwarded to python):
-#   --container   — run the web frontend inside the rootless podman
-#                   image (container/aceman-web/Containerfile.web)
-#                   instead of the host python.
-#   --wsl         — serve to a Windows-side browser via the WSL guest IP.
-#                   Implies --host 0.0.0.0; strips --open-browser; passes
-#                   --wsl through to python so the UI hides Linux-only
-#                   affordances (App launcher card, acestream:// scheme
-#                   handler). Refuses outside WSL. Same flag is honored
-#                   via ACE_WSL=1.
+#   --container   — explicit opt-in to the containerised web (the
+#                   default; kept as a flag for clarity in launchers).
+#   --native      — opt out of container mode. Runs the host python3
+#                   directly. Useful for development, or when podman
+#                   isn't installed. Also honored via ACE_WEB_NATIVE=1.
+#   --disable-wsl — force normal (Linux-desktop) mode even when WSL is
+#                   detected. Same as ACE_DISABLE_WSL=1. WSL mode is
+#                   otherwise auto-enabled if the kernel string says
+#                   we're inside WSL — see below.
+#
+# WSL behaviour: when /proc/sys/kernel/osrelease says we're inside WSL,
+# the wrapper automatically serves to a Windows-side browser:
+# --host 0.0.0.0 (so the WSL guest IP route answers), --open-browser
+# stripped (no Linux browser to launch), --wsl forwarded to python so
+# the UI hides Linux-desktop-only affordances (App-launcher card,
+# acestream:// scheme handler, the entire Player card). Pass
+# `--disable-wsl` (or set ACE_DISABLE_WSL=1) to force the normal
+# Linux-desktop path inside WSL for experimentation.
+#
+# Default mode is CONTAINER: the web runs inside a rootless podman image
+# (container/aceman-web/Containerfile.web) joined to the same `aceman-net`
+# bridge as the engine container. Reasons:
+#   * The web spawns ffmpeg for in-browser transcode; bundling ffmpeg in
+#     an image removes a host install step (and a "wrong ffmpeg version"
+#     class of bug reports).
+#   * A bug in the web's stream proxy or HTTP handler can't reach host
+#     files outside the three mounted aceman subdirs.
+#   * Engine ↔ web traffic stays on the shared podman network — neither
+#     side needs the host loopback as an intermediary.
+# `--native` / `ACE_WEB_NATIVE=1` skips the container if the user prefers
+# running the python on the host.
 #
 # Also bootstraps the host-side broker (broker/aceman-broker) — a tiny
 # unix-socket service that owns the podman allow-list. The Python web
@@ -85,6 +107,77 @@ done
 unset _arg _mode
 unset -f _resolve_playback_mode
 
+# Capture wrapper output to web.log from this point on. The desktop
+# entry has no terminal, so without this every "build failed" /
+# "podman not found" / "network already in use" line on stderr ends
+# up at /dev/null. By the time the user notices the browser can't
+# connect, there's nothing to debug. tee preserves the terminal-side
+# view when one exists (development / direct invocation), so this
+# costs nothing for that path.
+printf '\n=== %s aceman_web bootstrap ===\n' \
+    "$(date '+%Y-%m-%d %H:%M:%S')" >> "$WEB_LOG"
+if [ -t 1 ] && [ -t 2 ]; then
+    exec > >(tee -a "$WEB_LOG") 2>&1
+else
+    exec >>"$WEB_LOG" 2>&1
+fi
+# Tombstone: if `set -e` kicks us out before the `exec` to podman /
+# python, write a final marker so the user knows where to look. This
+# is the missing breadcrumb when the desktop entry "just doesn't
+# work" — image build failed, podman missing, network creation
+# refused, etc.
+_bootstrap_done=0
+trap '
+    if [ "$_bootstrap_done" = 0 ]; then
+        echo "aceman_web: bootstrap failed (exit $?). See entries above." >&2
+        echo "aceman_web: log: $WEB_LOG" >&2
+    fi
+' EXIT
+
+# Resolve the container-vs-native mode VERY early so we can skip the
+# web-image build on `--native`. Only --native / ACE_WEB_NATIVE=1
+# matter at this point; the rest of argv (host/port/open-browser) is
+# parsed further down.
+if [ "${ACE_WEB_NATIVE:-0}" = 1 ]; then
+    WEB_USE_CONTAINER=0
+else
+    WEB_USE_CONTAINER=1
+fi
+for _arg in "$@"; do
+    case "$_arg" in
+        --native) WEB_USE_CONTAINER=0 ;;
+    esac
+done
+unset _arg
+
+# Shared helpers — image builds, network ensure/attach, WSL detection,
+# validators. One file so the two wrappers can't drift apart on
+# "what counts as WSL", "what's the network called", etc. The helpers
+# read $ACELIB_PROJECT_ROOT and $PROG for context.
+PROG="aceman_web"
+ACELIB_PROJECT_ROOT="$SCRIPT_DIR"
+. "$SCRIPT_DIR/container/lib.sh"
+
+# First-run image bootstrap. ensure_engine_image is always run (the
+# engine container is what the user ultimately watches streams with,
+# whether the web is containerised or native). ensure_web_image is
+# gated on container mode so `--native` doesn't pay the build cost.
+# Both run BEFORE the broker spawns and BEFORE the tee redirect, so a
+# slow first run surfaces build progress to the user's terminal
+# instead of disappearing into web.log.
+ensure_engine_image
+if [ "$WEB_USE_CONTAINER" = 1 ]; then
+    ensure_web_image
+fi
+
+# Shared podman network for engine + web. Created once per host; both
+# containers join it so the web reaches the engine by container name.
+# attach_to_shared_network handles the in-place-upgrade case: if the
+# engine was started before this layout existed, connect it to the
+# new bridge so the web can still resolve http://ace:6878.
+ensure_shared_network
+attach_to_shared_network "${ACE_NAME:-ace}"
+
 # Ensure the broker is running. Idempotent: if the socket already exists,
 # the broker is up from a previous launch (or, harmlessly, the kernel left
 # a stale socket file — the broker will unlink + rebind on next start).
@@ -124,94 +217,203 @@ fi
 #     process substitution outlives `exec` because tee's stdin fd is
 #     inherited by the python process; tee exits when python closes it.
 printf '\n=== %s aceman_web starting (broker_already_running=%s) ===\n' \
-    "$(date '+%Y-%m-%d %H:%M:%S')" "$BROKER_ALREADY_RUNNING" >> "$WEB_LOG"
-if [ -t 1 ] && [ -t 2 ]; then
-    exec > >(tee -a "$WEB_LOG") 2>&1
-else
-    exec >>"$WEB_LOG" 2>&1
-fi
-# Container vs native dispatch.
-#
-# Two ways to ask for the containerised web:
-#   * env: ACE_WEB_CONTAINER=1 aceman_web
-#   * flag: aceman_web --container ...   (consumed here; not forwarded)
-#
-# The container mode wraps the Python in a rootless podman image that
-# already has ffmpeg baked in. The broker stays on the host either way
-# — it needs podman + host filesystem access to manage the engine
+    "$(date '+%Y-%m-%d %H:%M:%S')" "$BROKER_ALREADY_RUNNING"
+# Container vs native dispatch was already resolved above (before the
+# image builds) so we could skip the web image build on `--native`.
+# The container mode wraps the python in a rootless podman image that
+# already has ffmpeg baked in, joined to the `aceman-net` shared bridge
+# with the engine container. The broker stays on the host either way —
+# it needs podman + host filesystem access to manage the engine
 # container and write the desktop entry; containerising it would just
 # weaken the isolation we built it for.
-WEB_USE_CONTAINER="${ACE_WEB_CONTAINER:-0}"
-# --wsl: serve to a Windows-side browser via the WSL guest IP.
-# Implies --host 0.0.0.0 (so the WSL IP route actually answers) and
-# strips --open-browser (would try to spawn a Linux browser that
-# probably isn't installed on a headless WSL distro). The flag is
-# forwarded to python so the UI hides Linux-desktop-only affordances.
-WEB_USE_WSL=0
+
+# WSL mode: auto-on when /proc/sys/kernel/osrelease reports WSL.
+# `--disable-wsl` (parsed below) or ACE_DISABLE_WSL=1 forces it off
+# for users who want to experiment with the Linux-desktop path inside
+# WSL. Implies --host 0.0.0.0, strips --open-browser, and forwards
+# --wsl to python so the UI hides Linux-only affordances.
+if is_wsl && [ "${ACE_DISABLE_WSL:-0}" != 1 ]; then
+    WEB_USE_WSL=1
+else
+    WEB_USE_WSL=0
+fi
+
+# Argv parsing — three jobs:
+#
+#  (1) Strip wrapper-only flags (--native, --disable-wsl) before
+#      forwarding.
+#  (2) Translate --host / --port across modes:
+#        native    — pass through unchanged; python's --host/--port wins.
+#        container — --host is the HOST bind for the published port
+#                    (ACE_WEB_HOST), not python's bind (which is always
+#                    0.0.0.0 inside the container). So export it as the
+#                    env var run-web-container.sh reads, and DROP it
+#                    from python argv. --port is BOTH the host publish
+#                    port AND python's listen port: export AND keep.
+#  (3) Handle --open-browser:
+#        WSL       — drop; the browser is on the Windows side.
+#        container — drop from python argv (no GUI/xdg-open in the
+#                    container) and remember to spawn xdg-open from
+#                    the host once the container is started.
+#        native    — pass through to python.
 _web_argv=()
-_have_host_flag=0
+_open_browser=0
+_have_host=0
+_expect=""           # "host" / "port" when next token is a value
 for _arg in "$@"; do
+    if [ -n "$_expect" ]; then
+        case "$_expect" in
+            host)
+                export ACE_WEB_HOST="$_arg"
+                _have_host=1
+                # Container mode swallows --host (becomes ACE_WEB_HOST);
+                # native mode forwards it so python binds to it directly.
+                if [ "$WEB_USE_CONTAINER" = 0 ]; then
+                    _web_argv+=(--host "$_arg")
+                fi
+                ;;
+            port)
+                export ACE_WEB_PORT="$_arg"
+                _web_argv+=(--port "$_arg")
+                ;;
+        esac
+        _expect=""
+        continue
+    fi
     case "$_arg" in
-        --container) WEB_USE_CONTAINER=1 ;;
-        --wsl)       WEB_USE_WSL=1 ;;
+        --container) ;;       # removed flag; ignored for back-compat
+        --native)    ;;       # already consumed via WEB_USE_CONTAINER
+        --disable-wsl) WEB_USE_WSL=0 ;;
+        --host)      _expect="host" ;;
+        --port)      _expect="port" ;;
         --open-browser)
-            if [ "$WEB_USE_WSL" = 1 ] || [ "${ACE_WSL:-0}" = 1 ]; then
-                : # silently drop — browser is on the Windows side
-            else
-                _web_argv+=("$_arg")
-            fi
-            ;;
-        --host) _have_host_flag=1; _web_argv+=("$_arg") ;;
+            _open_browser=1 ;;
         *) _web_argv+=("$_arg") ;;
     esac
 done
-unset _arg
-if [ "${ACE_WSL:-0}" = 1 ]; then WEB_USE_WSL=1; fi
+unset _arg _expect
 
+# WSL mode bookkeeping. We treat WSL as "browser is on the Windows
+# side" — so --open-browser never makes sense (no Linux browser to
+# launch), and --host gets forced to 0.0.0.0 so the WSL guest IP route
+# actually answers. The --wsl flag is also forwarded to python so the
+# UI hides Linux-desktop-only affordances (App-launcher row, etc.).
+# is_wsl was already true when we set WEB_USE_WSL=1 above; no need to
+# re-check. We still need the guest IP for the printout, though.
 if [ "$WEB_USE_WSL" = 1 ]; then
-    if ! grep -qiE "microsoft|wsl" /proc/sys/kernel/osrelease 2>/dev/null; then
-        echo "aceman_web: --wsl flag passed but this isn't WSL — refusing." >&2
-        exit 1
-    fi
-    # The WSL guest IP is what Windows uses to reach this distro.
-    # `hostname -I` lists every assigned address; first one is the
-    # routable interface in NAT mode.
-    _wsl_ip="$(hostname -I 2>/dev/null | awk '{print $1; exit}')"
-    if [ -z "$_wsl_ip" ]; then
+    if ! _wsl_ip="$(wsl_guest_ip)"; then
         echo "aceman_web: could not resolve WSL guest IP (hostname -I empty)" >&2
         exit 1
     fi
-    # Default bind under WSL is 0.0.0.0 (so the WSL guest IP answers).
-    # If the caller passed --host explicitly we honor it; otherwise inject.
-    if [ "$_have_host_flag" = 0 ]; then
-        _web_argv+=(--host 0.0.0.0)
-    fi
-    # Tell python so it surfaces is_wsl=true on /api/storage-mode and
-    # the frontend hides the App-launcher row.
-    _web_argv+=(--wsl)
-    # Surface the Windows-side URL on stdout/stderr (both so the
-    # terminal user AND the cache log capture it). The actual port
-    # gets resolved by python; we read it back from the env override
-    # or the default 8770 the launcher script uses.
-    _wsl_port="${ACE_WEB_PORT:-8770}"
-    for _i in "${!_web_argv[@]}"; do
-        if [ "${_web_argv[$_i]}" = "--port" ]; then
-            _next=$(( _i + 1 ))
-            [ -n "${_web_argv[$_next]:-}" ] && _wsl_port="${_web_argv[$_next]}"
-            break
+    _open_browser=0
+    if [ "$_have_host" = 0 ]; then
+        export ACE_WEB_HOST=0.0.0.0
+        _have_host=1
+        # Native mode also needs python's --host=0.0.0.0 in argv.
+        if [ "$WEB_USE_CONTAINER" = 0 ]; then
+            _web_argv+=(--host 0.0.0.0)
         fi
-    done
+    fi
+    _web_argv+=(--wsl)
+fi
+
+# Native --open-browser is python's job; container mode opens from the
+# host (the python in the container has no GUI / xdg-open). Re-add to
+# python argv only for the native path.
+if [ "$_open_browser" = 1 ] && [ "$WEB_USE_CONTAINER" = 0 ]; then
+    _web_argv+=(--open-browser)
+fi
+
+# Resolve the URL we'll print (and, in container mode, hand to
+# xdg-open). Default port matches whichever path the server takes:
+# container publishes ACE_WEB_PORT (8770); native python defaults to
+# 8765. The host portion depends on mode too — container honors
+# ACE_WEB_HOST, native uses the python --host value (defaulting to
+# 127.0.0.1 if neither --host nor WSL bumped it to 0.0.0.0).
+if [ "$WEB_USE_CONTAINER" = 1 ]; then
+    _eff_port="${ACE_WEB_PORT:-8770}"
+    _eff_host="${ACE_WEB_HOST:-127.0.0.1}"
+else
+    _eff_port="${ACE_WEB_PORT:-8765}"
+    _eff_host="${ACE_WEB_HOST:-127.0.0.1}"
+fi
+# For URL display, 0.0.0.0 is "anywhere" — but the user can't paste
+# 0.0.0.0 into a browser. Translate to something reachable.
+if [ "$_eff_host" = "0.0.0.0" ]; then
+    if [ "$WEB_USE_WSL" = 1 ]; then
+        _eff_host="$_wsl_ip"
+    else
+        _eff_host="127.0.0.1"
+    fi
+fi
+
+if [ "$WEB_USE_WSL" = 1 ]; then
     printf 'aceman_web: WSL mode — open in Windows browser: http://%s:%s/\n' \
-        "$_wsl_ip" "$_wsl_port" | tee -a "$WEB_LOG"
-    unset _wsl_ip _wsl_port _i _next _have_host_flag
-fi
-unset _have_host_flag
-
-if [ "$WEB_USE_CONTAINER" = "1" ]; then
-    exec -a aceman_web "$SCRIPT_DIR/container/run-web-container.sh" "${_web_argv[@]}"
+        "$_eff_host" "$_eff_port" | tee -a "$WEB_LOG"
 fi
 
+# Container mode: fork a poll-then-open helper. The container might
+# take a few seconds to start (image build is already done above, so
+# this is just `podman run` + python init). A naïve `sleep N` either
+# opens too early (browser shows a connection error) or wastes the
+# user's time. Poll the bound port instead, then xdg-open — gives a
+# fast open when the container is fast and a graceful one when it
+# isn't. We do this BEFORE exec'ing podman because exec replaces
+# this shell. `setsid` detaches the helper from this session so it
+# isn't SIGHUP'd when the wrapper process is replaced.
+if [ "$_open_browser" = 1 ] && [ "$WEB_USE_CONTAINER" = 1 ]; then
+    _url="http://${_eff_host}:${_eff_port}/"
+    if command -v xdg-open >/dev/null; then
+        # Use bash 1-arg /dev/tcp instead of curl so the polling
+        # helper doesn't pull in a curl dependency just for a TCP
+        # probe. Time out after ~30s — if the container hasn't
+        # bound by then, something's wrong and the user should see
+        # the browser error rather than us silently swallowing it.
+        ( setsid bash -c '
+            for _ in $(seq 1 60); do
+                if (exec 3<>/dev/tcp/'"$_eff_host"'/'"$_eff_port"') 2>/dev/null; then
+                    exec 3>&- 3<&-
+                    xdg-open "'"$_url"'" >/dev/null 2>&1
+                    exit 0
+                fi
+                sleep 0.5
+            done
+            xdg-open "'"$_url"'" >/dev/null 2>&1
+        ' ) &
+        disown 2>/dev/null || true
+        printf 'aceman_web: opening browser at %s once the server binds...\n' "$_url"
+    else
+        printf 'aceman_web: open in browser: %s\n' "$_url"
+    fi
+fi
+
+unset _have_host _open_browser _eff_port _eff_host _url _wsl_ip
+
+# About to hand off to the server (container or native python). Mark
+# the bootstrap complete so the EXIT trap above stops claiming we
+# failed if the child happens to die.
+_bootstrap_done=1
+
+if [ "$WEB_USE_CONTAINER" = 1 ]; then
+    # `exec -a NAME` sets argv[0] of the new process. The container
+    # launcher reads ACE_WEB_HOST / ACE_WEB_PORT from the environment
+    # for the `-p` publish, and forwards the rest of argv to python
+    # inside the container.
+    exec -a aceman_web "$SCRIPT_DIR/container/aceman-web/run-web-container.sh" \
+        "${_web_argv[@]}"
+fi
+
+# Native path: run python directly on the host.
 # `exec -a NAME` sets argv[0] of the new process. Makes `ps -ef`, `ss -tlnp`,
 # `lsof`, and `pkill aceman_web` show a useful name instead of "python3".
 # (Python additionally calls prctl(PR_SET_NAME) at startup to fix /proc/PID/comm.)
-exec -a aceman_web python3 "$SCRIPT_DIR/web/aceman_web.py" "${_web_argv[@]}"
+#
+# `-u` forces unbuffered stdout/stderr. The wrapper above already routed
+# our streams through `tee -a "$WEB_LOG"` (or a plain file redirect) —
+# when stdout isn't a tty, python defaults to full buffering, so the
+# `aceman_web listening on http://...` banner doesn't appear until the
+# buffer fills or the process exits. That's why users only saw the
+# server info on Ctrl-C. Unbuffered keeps the URL visible at startup —
+# important on the very first run when the user has no idea where to
+# open the browser.
+exec -a aceman_web python3 -u "$SCRIPT_DIR/web/aceman_web.py" "${_web_argv[@]}"

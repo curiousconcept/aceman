@@ -83,11 +83,12 @@ class DesktopTemplateTests(unittest.TestCase):
         else:
             self.fail("no Exec= line in output")
 
-    def test_container_flag_optional(self):
-        body_no = render_desktop_entry(self.launcher, "h", 80, container=False)
-        body_yes = render_desktop_entry(self.launcher, "h", 80, container=True)
-        self.assertNotIn("--container", body_no)
-        self.assertIn("--container", body_yes)
+    def test_no_container_flag_emitted(self):
+        # --container was a launcher opt-in back when native was the
+        # default. It's now the default mode of the launcher and the
+        # flag no longer exists on the wrapper side either.
+        body = render_desktop_entry(self.launcher, "h", 80)
+        self.assertNotIn("--container", body)
 
     def test_hostile_host_cannot_break_out_of_quotes(self):
         # Even if validate_host let a bad value slip past (it
