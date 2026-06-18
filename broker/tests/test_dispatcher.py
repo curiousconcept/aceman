@@ -163,7 +163,7 @@ class RegistryShapeTests(unittest.TestCase):
             "browsers.list",
             "desktop.status", "desktop.install", "desktop.uninstall",
             "desktop.restore_mimeapps_backup",
-            "broker.shutdown", "web.restart",
+            "broker.shutdown", "broker.respawn", "web.restart",
         }
         self.assertEqual(set(dispatcher.ACTIONS.keys()), expected)
 

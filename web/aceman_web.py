@@ -614,8 +614,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
         broker = self.engine_mgr.broker
 
         if Handler._running_in_container:
-            # Engine first (broker stays up to do the podman call for
-            # the web), then web container.
+            # Order matters here:
+            #   1. broker.respawn FIRST so every subsequent broker call
+            #      lands on a freshly-loaded broker process with the
+            #      latest on-disk code. The respawn is async (returns
+            #      after scheduling a 200 ms-delayed execv); we sleep
+            #      ~1 s before the next call so the new broker has
+            #      time to rebind the socket. If the pre-flight import
+            #      check fails inside broker.respawn, it returns
+            #      respawned=false with a reason and we just continue
+            #      against the OLD broker — better than no restart.
+            #   2. player.stop + engine.restart + web.restart in the
+            #      old order. The new broker handles them with its
+            #      latest engine_ops / restart_helpers code, including
+            #      ensure_*_image rebuilds + container recreate.
+            try:
+                br = broker.call("broker.respawn", timeout=15)
+                if br.get("respawned"):
+                    # Give the new broker a beat to bind its socket
+                    # before we hit it. 1 s comfortably covers the
+                    # 200 ms delay + Python startup + socket bind.
+                    time.sleep(1.0)
+                    _log("restart", "broker respawned; continuing on new broker")
+                else:
+                    _log("restart", "broker.respawn declined: %s",
+                         br.get("reason", "<no reason>"))
+            except EngineError as e:
+                _log("restart", "broker.respawn call failed (continuing): %s", e)
             try:
                 broker.call("player.stop", timeout=8)
             except EngineError as e:
