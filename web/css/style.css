@@ -376,6 +376,10 @@
     /* Top row is Player + Engine; Playback (with its long content-id
        input and video) now lives full-width below. */
     .top-row { grid-template-columns: 1fr 1fr; }
+    /* WSL mode hides the Player card; without this the Engine card
+       gets stranded in the left half. .top-row-solo is added by
+       app.js when isWslMode is true. */
+    .top-row.top-row-solo { grid-template-columns: 1fr; }
   }
   .right-col { grid-area: right; }
   .favs-col  { grid-area: favs; }

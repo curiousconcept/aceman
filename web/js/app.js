@@ -827,6 +827,23 @@ async function waitForEngineReady(msg, timeoutMs = 90_000) {
       if (engineState.isReadyToDismissSince(startedAt, minVisibleMs)) {
         return true;
       }
+      // Short-circuit when the engine literally cannot start because
+      // the image was uninstalled. Without this we'd wait the full
+      // 90 s timeout while the user stares at a modal with no way to
+      // resolve. Conditions: we've seen a fresh poll (so we trust the
+      // image flag), the modal has been visible long enough not to
+      // flash, and the broker reports image_installed=false. The
+      // image card itself surfaces the install prompt — we just
+      // need to dismiss the gating modal and tell the user where
+      // to go next.
+      const s = engineState.last;
+      const haveFreshRead = engineState.isFreshSince(startedAt);
+      const minHeld = (Date.now() - startedAt) >= minVisibleMs;
+      if (haveFreshRead && minHeld && s && s.image_installed === false) {
+        showError('Engine image is not installed — click "Install" '
+                + 'in the Engine image card, then start the engine.');
+        return false;
+      }
       await new Promise(r => setTimeout(r, 250));
     }
     return false;
@@ -1586,6 +1603,13 @@ async function toggleDesktopEntry() {
       if (row) row.style.display = 'none';
       const card = $('player-card');
       if (card) card.style.display = 'none';
+      // Engine is alone in the top row now — collapse the 2-column
+      // grid to 1fr so it spans the row instead of sitting in the
+      // left slot with empty space next to it. Marker class so the
+      // override only kicks in when the Player card is actually
+      // hidden, not whenever the page is narrow.
+      const topRow = document.querySelector('.top-row');
+      if (topRow) topRow.classList.add('top-row-solo');
     }
   } catch (e) {
     showError('Could not contact backend: ' + e.message);
