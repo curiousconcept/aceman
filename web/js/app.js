@@ -864,14 +864,12 @@ async function waitForEngineReady(msg, timeoutMs = 90_000) {
   try {
     const s = await api('/api/engine/status');
     engineState.applyPoll(s);
-    if (s && s.image_installed === false) {
-      showError('Engine image is not installed — click "Install" '
-              + 'in the Engine image card, then start the engine.');
-      return false;
-    }
-    if (engineState.isHealthy()) {
-      return true;
-    }
+    // Image-missing bail: silently. The play-button gate hint
+    // (`install the engine image in Setup & tools first`) already
+    // paints next to the Play button from describePlayButton — adding
+    // a second `showError` line above the play card was a duplicate.
+    if (s && s.image_installed === false) return false;
+    if (engineState.isHealthy()) return true;
   } catch (_) { /* fall through to the polling loop */ }
 
   showBusy(msg || 'Please wait while Aceman is getting ready…');
@@ -886,16 +884,14 @@ async function waitForEngineReady(msg, timeoutMs = 90_000) {
       if (engineState.isReadyToDismissSince(startedAt, minVisibleMs)) {
         return true;
       }
-      // Same image-missing short-circuit, but for the case where the
-      // pre-check above failed (BrokerError) and a later poll comes
-      // through with image_installed=false. Doubles as a guard
-      // against the broker recovering mid-wait.
+      // Same image-missing short-circuit (silent), for the case where
+      // the eager pre-check above failed (BrokerError) and a later
+      // poll comes through with image_installed=false. The
+      // play-button gate hint already surfaces the actionable text.
       const s = engineState.last;
       const haveFreshRead = engineState.isFreshSince(startedAt);
       const minHeld = (Date.now() - startedAt) >= minVisibleMs;
       if (haveFreshRead && minHeld && s && s.image_installed === false) {
-        showError('Engine image is not installed — click "Install" '
-                + 'in the Engine image card, then start the engine.');
         return false;
       }
       await new Promise(r => setTimeout(r, 250));

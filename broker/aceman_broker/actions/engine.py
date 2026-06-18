@@ -42,6 +42,37 @@ from . import register
 _engine_lock = threading.Lock()
 
 
+import re as _re
+
+# Engine-side noise we filter out before showing the log tail in the UI.
+# Each pattern is a benign line emitted from inside the container that
+# tells the operator nothing actionable but clutters the view:
+#   * `/dev/disk/by-id` — engine shells out to enumerate disks for a
+#     hardware fingerprint; we deliberately don't expose host devices,
+#     so ls returns ENOENT every poll.
+# Add patterns here as discovered. We filter on the broker, not in the
+# container — the engine binary stays untouched, and the raw log is
+# still available via `podman logs` for anyone investigating directly.
+_ENGINE_LOG_NOISE = (
+    _re.compile(r"^ls: cannot access '/dev/disk/by-id/?': "
+                r"No such file or directory\s*$"),
+)
+
+
+def _filter_engine_noise(text: str) -> str:
+    """Strip _ENGINE_LOG_NOISE lines from a log dump. Preserves order
+    and the trailing-newline shape of the input modulo the dropped
+    lines."""
+    if not text:
+        return text
+    out = []
+    for line in text.split("\n"):
+        if any(p.match(line) for p in _ENGINE_LOG_NOISE):
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
 def action_engine_logs(params: "dict | None" = None) -> dict:
     """Tail engine container logs via ``podman logs --tail N``."""
     lines = validate_lines(
@@ -59,6 +90,7 @@ def action_engine_logs(params: "dict | None" = None) -> dict:
                 "tail": _safe(r.stderr or "container not running"),
                 "lines": 0, "size_bytes": 0, "available": False}
     text = (r.stdout or "") + (r.stderr or "")
+    text = _filter_engine_noise(text)
     tail = text.rstrip("\n")
     return {"path": f"podman logs {NAME}",
             "tail": tail,

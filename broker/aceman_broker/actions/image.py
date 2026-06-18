@@ -37,7 +37,13 @@ def action_image_status(params: "dict | None" = None) -> dict:
 
 
 def action_image_install(params: "dict | None" = None) -> dict:
-    tarball = PROJECT_ROOT / "dist" / "engine.tar.gz"
+    # Match where the wrapper (container/engine/Containerfile) actually
+    # expects the tarball — `container/engine/dist/engine.tar.gz`. The
+    # earlier `PROJECT_ROOT / "dist" / "engine.tar.gz"` path was a stale
+    # holdover from before the engine build context moved into
+    # `container/engine/` and pointed users at a directory that doesn't
+    # exist by convention.
+    tarball = PROJECT_ROOT / "container" / "engine" / "dist" / "engine.tar.gz"
     if not tarball.is_file():
         build_state.transition(
             "failed", error=f"engine.tar.gz not found at {tarball}")
