@@ -109,13 +109,57 @@ ensure_engine_image() {
         "download from acestream.media and place it at the path above, then re-run."
 }
 
-# Ensure the web container image is present. Build context is the
-# project root (Containerfile.web does `COPY web /app/web`).
+# Ensure the web container image is present and up-to-date with the
+# checked-out source tree. Build context is the project root
+# (Containerfile.web does `COPY web /app/web`).
+#
+# Unlike the engine image (whose contents come from an external
+# tarball and almost never change between runs), the web image bakes
+# in the JS bundle / python web frontend that the operator iterates
+# on. Without an auto-rebuild step every `git pull` would leave the
+# container serving the previous bundle, and "why isn't my fix
+# working?" becomes a 20-minute debugging detour. The cheap mtime
+# comparison below catches that: if anything under web/ is newer
+# than the image's CREATED timestamp, we re-run `podman build`.
+#
+# `podman build` with the layer cache is nearly free in the
+# everything-unchanged case (a few hundred ms of metadata checks);
+# when web/ has changed, only the final `COPY web` layer needs
+# redoing (apt install ffmpeg etc. stays cached). So the cost of
+# always checking is small enough that we just check every launch.
 ensure_web_image() {
     local root="${ACELIB_PROJECT_ROOT:?ACELIB_PROJECT_ROOT must be set}"
     local tag="${ACE_WEB_IMAGE:-localhost/aceman-web:vetted}"
     local cf="$root/container/aceman-web/Containerfile.web"
-    _ensure_podman_image "$tag" "$root" "$cf" "web"
+    command -v podman >/dev/null || return 0
+
+    # First-run / image-missing path: surface progress with the same
+    # banner as ensure_engine_image, then return.
+    if ! podman image exists "$tag" 2>/dev/null; then
+        _ensure_podman_image "$tag" "$root" "$cf" "web"
+        return $?
+    fi
+
+    # Image is present — check whether web/ has been touched since it
+    # was built. `find -printf '%T@'` is portable across GNU find; if
+    # either timestamp probe comes back empty (date can't parse the
+    # podman string, find isn't GNU, etc.) we conservatively skip the
+    # rebuild instead of looping rebuilds forever on a parse mismatch.
+    local image_ts web_ts
+    image_ts="$(podman image inspect "$tag" --format '{{.Created}}' 2>/dev/null)"
+    [ -n "$image_ts" ] || return 0
+    image_ts="$(date -d "$image_ts" +%s 2>/dev/null)" || return 0
+    web_ts="$(find "$root/web" "$cf" -type f -printf '%T@\n' 2>/dev/null \
+              | sort -nr | head -1 | cut -d. -f1)"
+    [ -n "$web_ts" ] || return 0
+    if [ "$web_ts" -le "$image_ts" ]; then
+        return 0
+    fi
+
+    local prog="${PROG:-aceman}"
+    echo "$prog: web/ source newer than '$tag' image — rebuilding (incremental)..." >&2
+    ( cd "$root" && podman build -t "$tag" -f "$cf" . ) >&2 \
+        || { echo "$prog: web image rebuild failed; see output above" >&2; return 1; }
 }
 
 # ---- shared podman network ---------------------------------------------
