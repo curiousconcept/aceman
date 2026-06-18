@@ -227,6 +227,11 @@ const onSearchInput = debounce(() => runSearch(), 300);
 // cid and NOT an acestream:// URL — parseId() returns non-null for
 // both of those cases. We ALSO hide the section while something is
 // actively playing in this tab so the video has the room.
+//
+// When the section is hidden we also blank the "N results" status
+// pill in the card title; otherwise the stale count lingers after
+// the user stops playback of a search-clicked stream (cid in input,
+// no results table on screen — confusing).
 function refreshSearchSection() {
   const sec = $('search-section');
   if (!sec) return;
@@ -235,6 +240,10 @@ function refreshSearchSection() {
   const playing = !!livePlaybackTarget;
   const wantSearch = !isCid && !playing && shouldSearch(normaliseQuery(v));
   sec.style.display = wantSearch ? '' : 'none';
+  if (!wantSearch) {
+    const status = $('search-status');
+    if (status) status.textContent = '';
+  }
 }
 
 async function runSearch() {
