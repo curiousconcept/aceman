@@ -815,6 +815,29 @@ function hideBusy() {
 // container + HTTP API up, or until `timeoutMs` elapses. Caller can
 // await this to sequence work after the engine is ready.
 async function waitForEngineReady(msg, timeoutMs = 90_000) {
+  // Eager pre-check: ask the broker about the engine + image state
+  // BEFORE showing the modal. If the image is uninstalled, the modal
+  // never paints — we go straight to the actionable error. Saves the
+  // ~600 ms minVisibleMs flash and avoids the poll-loop timing race
+  // where the modal would paint, then dismiss the next tick.
+  //
+  // Failures here (BrokerError, connection refused, etc.) fall through
+  // to the polling-loop path below, which is the right thing for a
+  // transient blip: the loop will retry every 4 s via the standing
+  // refreshEngineStatus interval and dismiss on first healthy read.
+  try {
+    const s = await api('/api/engine/status');
+    engineState.applyPoll(s);
+    if (s && s.image_installed === false) {
+      showError('Engine image is not installed — click "Install" '
+              + 'in the Engine image card, then start the engine.');
+      return false;
+    }
+    if (engineState.isHealthy()) {
+      return true;
+    }
+  } catch (_) { /* fall through to the polling loop */ }
+
   showBusy(msg || 'Please wait while Aceman is getting ready…');
   const startedAt = Date.now();
   const deadline = startedAt + timeoutMs;
@@ -827,15 +850,10 @@ async function waitForEngineReady(msg, timeoutMs = 90_000) {
       if (engineState.isReadyToDismissSince(startedAt, minVisibleMs)) {
         return true;
       }
-      // Short-circuit when the engine literally cannot start because
-      // the image was uninstalled. Without this we'd wait the full
-      // 90 s timeout while the user stares at a modal with no way to
-      // resolve. Conditions: we've seen a fresh poll (so we trust the
-      // image flag), the modal has been visible long enough not to
-      // flash, and the broker reports image_installed=false. The
-      // image card itself surfaces the install prompt — we just
-      // need to dismiss the gating modal and tell the user where
-      // to go next.
+      // Same image-missing short-circuit, but for the case where the
+      // pre-check above failed (BrokerError) and a later poll comes
+      // through with image_installed=false. Doubles as a guard
+      // against the broker recovering mid-wait.
       const s = engineState.last;
       const haveFreshRead = engineState.isFreshSince(startedAt);
       const minHeld = (Date.now() - startedAt) >= minVisibleMs;
