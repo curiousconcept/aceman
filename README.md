@@ -24,7 +24,7 @@ Linux. The project ships four pieces that work together:
 
 | Component         | What                                                                                       | Notes                                                                                       |
 |-------------------|--------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------|
-| OS                | Linux                                                                                      | Any distro with rootless Podman. WSL2 works too — `aceman_web` auto-detects and serves to the Windows side.    |
+| OS                | Linux                                                                                      | Any distro with rootless Podman. WSL2 works too — `aceman_web` auto-detects and serves to the Windows side. |
 | Podman            | ≥ 4.0, rootless                                                                            | Preinstalled on most modern distros; Debian/Ubuntu may need `slirp4netns` + `subuid`/`subgid`.       |
 | Python            | ≥ 3.9                                                                                      | Only needed for `aceman_web`. **Standard library only — no `pip install` required.**      |
 | Bash              | ≥ 4                                                                                        | For `aceman` and `container/engine/run-container.sh`.                                            |
