@@ -1873,6 +1873,16 @@ async function toggleDesktopEntry() {
   $('restart-go').onclick = async () => {
     const rebuild = $('restart-rebuild-cb').checked;
     closeRestartModal();
+    // Block the underlying UI behind the existing busy modal while
+    // the restart is in flight. Same overlay used for play/stop
+    // transitions and engine-startup waits, so the look is
+    // consistent. The page itself stays intact behind the backdrop
+    // (no document.body replacement) so a cancelled / timed-out
+    // restart leaves the operator on a working UI rather than a
+    // text-only error page they have to reload by hand.
+    showBusy(rebuild
+        ? 'Restarting and rebuilding images… this may take a minute.'
+        : 'Restarting…');
     const btn = $('server-restart');
     btn.disabled = true;
     btn.textContent = 'Restarting…';
@@ -1887,11 +1897,6 @@ async function toggleDesktopEntry() {
         body: JSON.stringify({ rebuild }),
       });
     } catch (_) { /* connection close is expected */ }
-    document.body.innerHTML =
-      '<div style="text-align:center;padding:3rem;color:#aaa;' +
-      'font:14px/1.5 system-ui,sans-serif">' +
-      '<h2 style="color:#eee">Restarting…</h2>' +
-      '<p>Reconnecting in a few seconds.</p></div>';
     // Poll until the new instance responds, then reload. The probe
     // window is wider when rebuild=true because podman build (even
     // with the layer cache hot) can add a handful of seconds.
@@ -1899,13 +1904,12 @@ async function toggleDesktopEntry() {
     const timeoutMs = rebuild ? 180_000 : 30_000;
     const ping = async () => {
       if (Date.now() - start > timeoutMs) {
-        document.body.innerHTML =
-          '<div style="text-align:center;padding:3rem;color:#aaa;' +
-          'font:14px/1.5 system-ui,sans-serif">' +
-          '<h2 style="color:#eee">Restart timed out</h2>' +
-          '<p>The new instance didn\'t come up within '
-          + Math.round(timeoutMs / 1000)
-          + ' s. Check the terminal or <code>tools/tail-web.sh</code>.</p></div>';
+        hideBusy();
+        btn.disabled = false;
+        btn.textContent = 'Restart';
+        showError('Restart timed out after '
+                + Math.round(timeoutMs / 1000)
+                + ' s — check the terminal or tools/tail-web.sh.');
         return;
       }
       try {
