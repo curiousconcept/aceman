@@ -1077,6 +1077,34 @@ let pendingEngineAction = false; // suppress polling label flicker while a butto
 // poll / hydrate / render wiring around it.
 const engineState = new EngineStatusState();
 
+// First-to-claim acestream:// handoff. The wrapper's fast-path POSTs
+// the cid to /api/play-request when a second invocation fires; every
+// open tab sees s.pending_play_cid on the next status poll. POST the
+// claim — server atomically clears the slot, only the first POST
+// returns claimed:true. Multiple tabs each call play() at most once
+// because the server is the synchronisation point.
+async function maybePickUpPendingPlay(s) {
+  const cid = (s && typeof s.pending_play_cid === 'string')
+              ? s.pending_play_cid : '';
+  if (!/^[a-f0-9]{40}$/.test(cid)) return;
+  // Already live with this cid? Don't bounce playback.
+  if (current && current.cid === cid) return;
+  let claim;
+  try {
+    claim = await api('/api/play-request/claim', {
+      method: 'POST', body: JSON.stringify({ cid }),
+    });
+  } catch (_) { return; }
+  if (!claim || claim.claimed !== true) return;
+  // We own this handoff. Fill the Watch input and play through the
+  // same code path a fav-click uses — resolveDisplayName picks up the
+  // name from favourites if it's saved.
+  $('cid-input').value = cid;
+  refreshClearButton();
+  refreshSearchSection();
+  try { await play(); } catch (_) { /* surfaced via showError */ }
+}
+
 async function refreshEngineStatus() {
   if (pendingEngineAction) return;
   let s;
@@ -1086,6 +1114,9 @@ async function refreshEngineStatus() {
     return;  // leave previous state on the UI
   }
   engineState.applyPoll(s);
+  // Fire-and-forget — pending-play handling shouldn't block the rest
+  // of the status refresh. The claim POST has its own short timeout.
+  maybePickUpPendingPlay(s);
   // External player went away (user closed VLC window, mpv crashed,
   // wrapper exited normally) — clear the live pip so it stops
   // blinking when nothing is actually playing.

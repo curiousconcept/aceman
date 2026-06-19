@@ -327,6 +327,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
     # header normalisation isn't perfectly predictable.
     allowed_hosts: "set[str] | None" = None
 
+    # Pending-play slot for the `acestream://`-link → "play in the
+    # tab the user is already looking at" handoff. Filled by
+    # POST /api/play-request (typically from a second aceman_web
+    # wrapper invocation that the desktop entry spawned), surfaced
+    # to the frontend on /api/engine/status, and atomically cleared
+    # by the first POST /api/play-request/claim from any open tab.
+    # Multiple open tabs race the claim — exactly one wins so the
+    # stream plays once.
+    _pending_play_cid: str = ""
+    _pending_play_ts: float = 0.0
+    _pending_play_lock = threading.Lock()
+
     server_version = "aceman_web/1.0"
     sys_version = ""
 
@@ -1277,6 +1289,37 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if path == "/api/restart":
             return self._handle_restart(body or {})
 
+        if path == "/api/play-request":
+            # Enqueue a "please play this cid" handoff from a second
+            # wrapper invocation. The running web's open tab(s) pick
+            # this up via /api/engine/status on the next poll and
+            # the first to claim wins. Replaces a `xdg-open
+            # ?play=...` cycle that always opened a new tab.
+            cid_raw = (body or {}).get("cid", "")
+            if not isinstance(cid_raw, str) or not HEX40.match(cid_raw):
+                return self._error(400, "invalid cid")
+            cid = cid_raw.lower()
+            with Handler._pending_play_lock:
+                Handler._pending_play_cid = cid
+                Handler._pending_play_ts = time.monotonic()
+            _log("server", "play-request queued cid=%s", cid)
+            return self._send_json(200, {"queued": True, "cid": cid})
+
+        if path == "/api/play-request/claim":
+            # First tab to call with the matching cid wins. Server
+            # atomically clears the slot so subsequent tabs polling
+            # /api/engine/status see no pending cid and don't act.
+            cid_raw = (body or {}).get("cid", "")
+            if not isinstance(cid_raw, str) or not HEX40.match(cid_raw):
+                return self._error(400, "invalid cid")
+            cid = cid_raw.lower()
+            with Handler._pending_play_lock:
+                if Handler._pending_play_cid == cid:
+                    Handler._pending_play_cid = ""
+                    Handler._pending_play_ts = 0.0
+                    return self._send_json(200, {"claimed": True})
+            return self._send_json(200, {"claimed": False})
+
         if path == "/api/factory-reset":
             return self._factory_reset(body)
 
@@ -1569,6 +1612,11 @@ def main(argv: list[str] | None = None) -> int:
         search_proxy=Handler.search_proxy,
         heartbeat=Handler.heartbeat,
         is_wsl=args.wsl,
+        # Engine-status route reads this so the polling tab can pick
+        # up `acestream://` hand-offs (POST /api/play-request) from
+        # a second wrapper invocation. Pure peek — the claim path
+        # (POST /api/play-request/claim) is what atomically clears.
+        pending_play_cid_peek=lambda: Handler._pending_play_cid,
     )
     Handler.router = Router()
     _register_routes(Handler.router)

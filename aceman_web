@@ -107,24 +107,34 @@ _BROKER_SOCK_PROBE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/aceman/broker.sock"
 _aceman_web_handoff_url() {
     local url="$1"
     [ -S "$_BROKER_SOCK_PROBE" ] || return 1
+    command -v curl >/dev/null || return 1
     local cid="${url#acestream://}"
     cid="${cid%/}"
     [[ "$cid" =~ ^[A-Fa-f0-9]{40}$ ]] || return 1
     cid="$(printf '%s' "$cid" | tr 'A-F' 'a-f')"
-    # Hand off port resolution to the wrapper-default that matches what
-    # the existing instance must have bound (container mode publishes
-    # 8770, native publishes 8765). The user can override via
-    # ACE_WEB_PORT.
+    # The user can override via ACE_WEB_PORT. Container mode publishes
+    # 8770, native 8765 — match the wrapper defaults.
     local port="${ACE_WEB_PORT:-8770}"
-    local url_target="http://127.0.0.1:${port}/?play=${cid}"
-    # Quick liveness probe: if curl can't reach the port, fall back
-    # to the full bootstrap. /dev/tcp would also work; curl gives us
-    # an HTTP status, which is one more signal.
-    if command -v curl >/dev/null \
-       && curl -fsS --max-time 1 -o /dev/null \
-           "http://127.0.0.1:${port}/api/storage-mode" 2>/dev/null; then
-        command -v xdg-open >/dev/null \
-            && setsid sh -c "xdg-open '$url_target' >/dev/null 2>&1" &
+    # Reachability probe + queue the play request in one shot:
+    # POST the cid to /api/play-request on the running instance. The
+    # already-open tab(s) pick it up on the next /api/engine/status
+    # poll (every 4 s); the first to claim wins, so opening more tabs
+    # would not double-play. This is the "reuse the existing tab"
+    # path the operator asked for — no xdg-open, no new tab.
+    if curl -fsS --max-time 2 -X POST \
+           -H 'content-type: application/json' \
+           --data "{\"cid\": \"$cid\"}" \
+           "http://127.0.0.1:${port}/api/play-request" \
+           >/dev/null 2>&1; then
+        return 0
+    fi
+    # POST failed (old web without /api/play-request, server crashed,
+    # different port). Fall back to xdg-open so the click does
+    # SOMETHING useful — a new tab with ?play=cid is worse than tab
+    # reuse but better than silently doing nothing.
+    if command -v xdg-open >/dev/null; then
+        local url_target="http://127.0.0.1:${port}/?play=${cid}"
+        ( setsid sh -c "xdg-open '$url_target' >/dev/null 2>&1" ) &
         return 0
     fi
     return 1

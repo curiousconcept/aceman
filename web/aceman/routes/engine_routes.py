@@ -27,6 +27,12 @@ def engine_status(req: Request, ctx: RouteContext) -> Response:
              "image_state": img.get("state", "unknown")}
     else:
         s = {**s, "image_installed": True, "image_state": "unknown"}
+    # Pending-play handoff: when a second wrapper invocation has
+    # queued a cid via POST /api/play-request, surface it here so the
+    # currently-open tab's existing 4 s status poll picks it up. The
+    # first tab to POST /api/play-request/claim wins; subsequent
+    # tabs see an empty value and don't act.
+    s["pending_play_cid"] = ctx.pending_play_cid_peek()
     return Response.json(200, s)
 
 
