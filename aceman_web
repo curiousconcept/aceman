@@ -94,12 +94,54 @@ _resolve_playback_mode() {
     fi
     printf 'external'
 }
+# Fast-path for `acestream://` clicks: if an aceman_web is already
+# running (broker socket present + port answering), hand the URL off
+# to it via the browser instead of running the full bootstrap. The
+# existing running instance handles ?play=<cid> in its JS (see
+# extractPlayCidFromUrl). Without this, every browser-mode link click
+# would re-run ensure_*_image, podman network ensure, broker spawn,
+# and `podman rm -f + run` for the web container — which is what
+# painted "Unable to connect" or the red "engine not running" UI
+# while the existing web container was mid-restart.
+_BROKER_SOCK_PROBE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/aceman/broker.sock"
+_aceman_web_handoff_url() {
+    local url="$1"
+    [ -S "$_BROKER_SOCK_PROBE" ] || return 1
+    local cid="${url#acestream://}"
+    cid="${cid%/}"
+    [[ "$cid" =~ ^[A-Fa-f0-9]{40}$ ]] || return 1
+    cid="$(printf '%s' "$cid" | tr 'A-F' 'a-f')"
+    # Hand off port resolution to the wrapper-default that matches what
+    # the existing instance must have bound (container mode publishes
+    # 8770, native publishes 8765). The user can override via
+    # ACE_WEB_PORT.
+    local port="${ACE_WEB_PORT:-8770}"
+    local url_target="http://127.0.0.1:${port}/?play=${cid}"
+    # Quick liveness probe: if curl can't reach the port, fall back
+    # to the full bootstrap. /dev/tcp would also work; curl gives us
+    # an HTTP status, which is one more signal.
+    if command -v curl >/dev/null \
+       && curl -fsS --max-time 1 -o /dev/null \
+           "http://127.0.0.1:${port}/api/storage-mode" 2>/dev/null; then
+        command -v xdg-open >/dev/null \
+            && setsid sh -c "xdg-open '$url_target' >/dev/null 2>&1" &
+        return 0
+    fi
+    return 1
+}
+
 for _arg in "$@"; do
     case "$_arg" in
         acestream://*)
             _mode="$(_resolve_playback_mode)"
             case "$_mode" in
                 browser)
+                    # Fast-path: hand off to existing instance if one's
+                    # already serving. Falls through to the full
+                    # bootstrap when no running instance is detected.
+                    if _aceman_web_handoff_url "$_arg"; then
+                        exit 0
+                    fi
                     # Don't exec the shell — fall through so Python sees
                     # the URL. argv still contains it, plus whatever the
                     # desktop entry put before it (--open-browser etc.).
