@@ -674,6 +674,13 @@ function setNowPlayingName(primary, sub) {
 // now-playing card can show the channel name. If no name is passed (e.g.
 // the user typed a cid directly), we try to look it up in the favourites
 // list — typing a cid you've saved should still show its name.
+//
+// opts.skipConfirm=true suppresses the "Open in Brave and close this tab"
+// confirm modal on the open-in-other-browser path. Used by the
+// acestream:// pending-play pickup: the user already configured the
+// target browser AND clicked the link — both are the same "I want to
+// watch this" signal, asking again would be noise. Manual Play-button
+// clicks keep the confirm.
 async function play(opts = {}) {
   showError('');
   const cid = parseId($('cid-input').value);
@@ -731,7 +738,12 @@ async function play(opts = {}) {
       // Specific-browser target → open a new window there with
       // ?play=<cid>; its own JS picks up the cid and starts
       // in-page playback. We don't open anything in *this* tab.
-      if (!(await showConfirm({
+      //
+      // Skip the confirm modal when the caller already has implicit
+      // consent (acestream://-link pickup): the user configured the
+      // target browser AND clicked the link. Asking again would
+      // make every link click two clicks.
+      if (!opts.skipConfirm && !(await showConfirm({
           title: `Open in ${path.label}`,
           message: `Open the stream in ${path.label} and close this tab? `
                  + `A new window will open in ${path.label}. This tab will then `
@@ -1098,11 +1110,13 @@ async function maybePickUpPendingPlay(s) {
   if (!claim || claim.claimed !== true) return;
   // We own this handoff. Fill the Watch input and play through the
   // same code path a fav-click uses — resolveDisplayName picks up the
-  // name from favourites if it's saved.
+  // name from favourites if it's saved. skipConfirm so a configured
+  // "play in Brave" target doesn't prompt the user mid-link-click.
   $('cid-input').value = cid;
   refreshClearButton();
   refreshSearchSection();
-  try { await play(); } catch (_) { /* surfaced via showError */ }
+  try { await play({ skipConfirm: true }); }
+  catch (_) { /* surfaced via showError */ }
 }
 
 async function refreshEngineStatus() {
@@ -2157,10 +2171,14 @@ async function toggleDesktopEntry() {
     // Desktop-entrypoint path: the user clicked an acestream:// link and
     // the engine may not be up yet. Block the UI behind the busy modal
     // until container + API are both healthy, then start playback.
+    // skipConfirm: this URL was either opened by /api/open-in-browser
+    // (already-confirmed hand-off) or pasted by the user; either way
+    // they already expressed intent. The browser-target confirm would
+    // be redundant noise.
     (async () => {
       const ready = await waitForEngineReady(
           'Please wait while Aceman is getting ready…');
-      if (ready) play();
+      if (ready) play({ skipConfirm: true });
     })();
   }
 })();
