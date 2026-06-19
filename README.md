@@ -1,5 +1,7 @@
 # aceman
 
+https://www.patreon.com/cw/curiousconcept
+
 Watch [Ace Stream](https://acestream.org) content from a sandboxed engine on
 Linux. The project ships four pieces that work together:
 
