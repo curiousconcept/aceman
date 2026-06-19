@@ -98,8 +98,16 @@ if podman container exists "$ACE_WEB_NAME" 2>/dev/null; then
     podman rm -f "$ACE_WEB_NAME" >/dev/null 2>&1 || true
 fi
 
-DETACH_FLAG=""
-[ -n "${ACE_DETACH:-}" ] && DETACH_FLAG="-d"
+# ACE_DETACH preserved as a "fire and forget" mode (no log follower,
+# wrapper returns immediately). Default mode now ALWAYS runs the
+# container detached and follows the logs in a separate step, so the
+# broker can `podman rm -f` + replay CreateCommand mid-run (to apply
+# a rebuild) without orphaning the terminal — the previous
+# `exec podman run -i` foreground would exit at that rm and the new
+# container's stdio had no consumer, which is what made the terminal
+# go silent.
+DETACH_REQUESTED=""
+[ -n "${ACE_DETACH:-}" ] && DETACH_REQUESTED="1"
 
 # Mounts. Each path is the smallest one the python actually touches:
 #   CONFIG  — favorites.db + config.json live here; RW required.
@@ -182,7 +190,7 @@ DETACH_FLAG=""
 # It can't escape to spawn host processes, can't read random $HOME
 # files, can't reach the engine's data, can't talk to anything on
 # the LAN.
-exec podman run --rm $DETACH_FLAG -i \
+podman run -d --rm \
     --name "$ACE_WEB_NAME" \
     --network "$ACE_NETWORK" \
     --userns=keep-id \
@@ -205,4 +213,36 @@ exec podman run --rm $DETACH_FLAG -i \
         --host 0.0.0.0 \
         --port "$ACE_WEB_PORT" \
         --engine "$ACE_ENGINE" \
-        "$@"
+        "$@" >/dev/null
+
+# Fire-and-forget mode: caller asked for the container in the
+# background. Skip the log follower; user is responsible for
+# `podman logs -f aceman-web` if they want output.
+[ -n "$DETACH_REQUESTED" ] && exit 0
+
+# Ctrl+C / SIGTERM in the wrapper terminal must take the container
+# down with us. Otherwise the user hits Ctrl+C, the log follower
+# dies, and aceman-web silently keeps running in the background.
+_cleanup() {
+    podman rm -f "$ACE_WEB_NAME" >/dev/null 2>&1 || true
+    exit 0
+}
+trap _cleanup INT TERM HUP
+
+# Stream container logs to this terminal, with reconnect tolerance
+# for the broker's recreate path (`podman rm -f` + replay
+# CreateCommand to swap in a fresh image): when the old container
+# disappears, give the recreate up to 10 s to land a new one before
+# concluding the user actually shut us down externally.
+_gone_deadline=0
+while true; do
+    if podman container exists "$ACE_WEB_NAME" 2>/dev/null; then
+        _gone_deadline=0
+        podman logs -f "$ACE_WEB_NAME" 2>&1 || true
+    else
+        _now=$(date +%s)
+        [ "$_gone_deadline" = 0 ] && _gone_deadline=$((_now + 10))
+        [ "$_now" -ge "$_gone_deadline" ] && break
+        sleep 1
+    fi
+done
