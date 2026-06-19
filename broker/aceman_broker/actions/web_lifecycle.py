@@ -172,10 +172,18 @@ def action_web_restart(params: "dict | None" = None) -> dict:
     # runs ensure_web_image and we recreate the container if the
     # image label actually moved.
     rebuild = bool((params or {}).get("rebuild", False))
-    image_changed = pick_up_image_changes("web", WEB_IMAGE) if rebuild else False
     rebuilt = False
-    if image_changed:
-        _log("web", "restart: image label moved; recreating '%s'", WEB_NAME)
+    if rebuild:
+        # Operator ticked Rebuild — always rebuild the image AND
+        # recreate the container, regardless of whether label/ID
+        # drift detection thinks anything moved. A plain
+        # `podman restart` keeps the old container running the old
+        # layers even after a fresh `podman build` overwrites the
+        # tag, so without an unconditional recreate here the
+        # "Rebuild" tickbox is a lie when the working tree is dirty
+        # (no label written → drift detection blind).
+        pick_up_image_changes("web", WEB_IMAGE)
+        _log("web", "restart: rebuild=true → recreating '%s'", WEB_NAME)
         recreate_container(WEB_NAME)
         rebuilt = True
     else:

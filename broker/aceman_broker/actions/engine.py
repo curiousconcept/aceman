@@ -198,12 +198,16 @@ def action_engine_restart(params: "dict | None" = None) -> dict:
                     "rebuilt": True,
                     "started_fresh": True,
                     "reason": r.get("reason")}
-        image_changed = (
-            pick_up_image_changes("engine", IMAGE) if rebuild else False
-        )
         rebuilt = False
-        if image_changed:
-            _log("engine", "restart: image label moved; recreating '%s'", NAME)
+        if rebuild:
+            # Operator ticked Rebuild — unconditionally rebuild AND
+            # recreate. Drift detection (label or image ID) can be
+            # blind on a dirty working tree, and a plain
+            # `podman restart` would then keep the stale container
+            # despite a fresh image. See web_lifecycle for the same
+            # rationale.
+            pick_up_image_changes("engine", IMAGE)
+            _log("engine", "restart: rebuild=true → recreating '%s'", NAME)
             recreate_container(NAME)
             rebuilt = True
         else:

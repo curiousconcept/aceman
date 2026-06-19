@@ -23,6 +23,28 @@ from ..engine_ops import image_commit_label
 from ..logging_util import _log, _safe
 
 
+def _image_id(tag: str) -> str:
+    """Resolve the local image ID for ``tag`` (empty if absent).
+
+    Used by :func:`pick_up_image_changes` to detect a rebuild even
+    when the ``aceman.commit`` label can't help — that's the case
+    when the working tree is dirty: ensure-image-helper deliberately
+    omits the label so a dirty image isn't mistaken for a clean one,
+    so the before/after labels are both empty and a label-only
+    comparison would say "nothing moved" even though podman build
+    just produced a brand-new image ID."""
+    try:
+        r = subprocess.run(
+            ["podman", "image", "inspect", "--format", "{{.Id}}", tag],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return ""
+    if r.returncode != 0:
+        return ""
+    return (r.stdout or "").strip()
+
+
 # Build-trigger timeout. The helper invokes podman build; a from-scratch
 # build can take a few minutes (apt install ffmpeg etc.). The layer
 # cache makes the typical incremental case <5 s. 5 min is the same
@@ -39,7 +61,8 @@ def pick_up_image_changes(kind: str, image_tag: str) -> bool:
     if not ENSURE_IMAGE_HELPER.is_file():
         _log("restart", "ensure-image helper missing at %s", ENSURE_IMAGE_HELPER)
         return False
-    before = image_commit_label(image_tag)
+    before_label = image_commit_label(image_tag)
+    before_id = _image_id(image_tag)
     try:
         r = subprocess.run(
             ["bash", str(ENSURE_IMAGE_HELPER), kind],
@@ -53,11 +76,23 @@ def pick_up_image_changes(kind: str, image_tag: str) -> bool:
              kind, r.returncode,
              _safe((r.stderr or r.stdout or "").strip()))
         return False
-    after = image_commit_label(image_tag)
-    changed = bool(after) and after != before
+    after_label = image_commit_label(image_tag)
+    after_id = _image_id(image_tag)
+    # Two ways the image counts as "moved": label changed (clean
+    # rebuild at a new commit) OR the image ID changed even though
+    # the label didn't (dirty-tree rebuild — ensure-image-helper
+    # omits the label on dirty so a working-tree edit looks like a
+    # no-op to a label-only check, even though podman build just
+    # produced a fresh image). Either way: the running container is
+    # still on the OLD layers and a plain `podman restart` would
+    # ship stale code; force a recreate so the new bits actually run.
+    label_moved = bool(after_label) and after_label != before_label
+    id_moved = bool(after_id) and after_id != before_id
+    changed = label_moved or id_moved
     if changed:
-        _log("restart", "%s image moved %s -> %s",
-             kind, before or "<none>", after)
+        _log("restart", "%s image moved label=%s->%s id=%s->%s",
+             kind, before_label or "<none>", after_label or "<none>",
+             (before_id or "<none>")[:19], (after_id or "<none>")[:19])
     return changed
 
 
