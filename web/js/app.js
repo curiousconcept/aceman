@@ -25,6 +25,7 @@ import { buildPlaybackOptions } from './lib/playback/playback_options.js';
 import { decidePlaybackPath } from './lib/playback/playback_decision.js';
 import { findFavouriteByCid } from './lib/favourites/favourite_lookup.js';
 import { targetValueToConfig } from './lib/playback/playback_config.js';
+import { clampBuffer, bufferedAhead, bufferReady, bufferLabel } from './lib/playback/playback_buffer.js';
 import { formatResetReport } from './lib/factory_reset_report.js';
 import { describeDesktopShortcutStatus } from './lib/cards/desktop_shortcut_status.js';
 import { describePlayButton } from './lib/playback/play_stop_button.js';
@@ -564,12 +565,23 @@ function startInBrowserPlayback(cid) {
   // Cache-buster query so the browser never serves a stale-cached body
   // for the proxy URL (we send no-store but belt + braces).
   const url = '/api/stream/proxy/' + cid + '?t=' + Date.now();
+  // Pre-roll buffer (Player card slider): 0 = off / play at the live
+  // edge as before; >0 = hold playback back by that many seconds for a
+  // hiccup cushion. Read once, at play time.
+  const bufferSecs = getPlaybackBuffer();
+  // Tracks whether we're still filling the pre-roll buffer, so the
+  // MEDIA_INFO handler doesn't stomp the "Buffering N/M s…" read-out
+  // with "Playing — …" before the cushion is built.
+  let buffering = bufferSecs > 0;
+  let mediaInfoText = '';
+  const playerCfg = { type: 'mpegts', isLive: true, url };
+  if (bufferSecs > 0) {
+    // Stop mpegts.js seeking to the live edge — that chasing would
+    // erase the very cushion the slider asks us to hold.
+    playerCfg.liveBufferLatencyChasing = false;
+  }
   try {
-    mpegtsPlayer = window.mpegts.createPlayer({
-      type: 'mpegts',
-      isLive: true,
-      url,
-    });
+    mpegtsPlayer = window.mpegts.createPlayer(playerCfg);
   } catch (e) {
     status.textContent = 'mpegts.js init failed: ' + e.message;
     status.className = 'gate-hint warn';
@@ -590,7 +602,11 @@ function startInBrowserPlayback(cid) {
     mpegtsPlayer.on(E.MEDIA_INFO, (info) => {
       const codec = (info && (info.videoCodec || info.mimeType)) || 'video';
       const audio = (info && info.audioCodec) ? ' / ' + info.audioCodec : '';
-      status.textContent = 'Playing — ' + codec + audio;
+      mediaInfoText = 'Playing — ' + codec + audio;
+      // While the pre-roll buffer is filling, leave the "Buffering …"
+      // counter up; _preRollBuffer shows this once it releases.
+      if (buffering) return;
+      status.textContent = mediaInfoText;
       status.className = 'gate-hint';
     });
     mpegtsPlayer.on(E.ERROR, (type, detail) => {
@@ -605,16 +621,82 @@ function startInBrowserPlayback(cid) {
   mpegtsPlayer.load();
   // play() returns a promise; if the user hasn't interacted with the
   // page yet, autoplay-without-mute will reject — surface that to them.
-  mpegtsPlayer.play().catch(e => {
-    status.textContent =
-      'Click the video to start (browser blocked autoplay): ' + e.message;
-    status.className = 'gate-hint warn';
+  const startPlay = () => {
+    if (!mpegtsPlayer) return;
+    mpegtsPlayer.play().catch(e => {
+      status.textContent =
+        'Click the video to start (browser blocked autoplay): ' + e.message;
+      status.className = 'gate-hint warn';
+    });
+  };
+  if (!buffering) {
+    startPlay();
+    return;
+  }
+  // Strip the native controls while the cushion fills — otherwise the
+  // user can hit the controls' Play and start at the live edge with an
+  // empty buffer, defeating the pre-roll. Restored on release.
+  v.controls = false;
+  // Hold playback until the pre-roll cushion is full, then release.
+  _preRollBuffer(v, status, bufferSecs, () => {
+    buffering = false;
+    v.controls = true;
+    if (mediaInfoText) { status.textContent = mediaInfoText; status.className = 'gate-hint'; }
+    startPlay();
   });
+}
+
+// Pending pre-roll timers, so a Stop / fresh Play can cancel an
+// in-flight buffer wait instead of leaking a 0–75 s setTimeout closure.
+let _preRollHandle = null;
+
+function _cancelPreRoll() {
+  if (!_preRollHandle) return;
+  clearInterval(_preRollHandle.timer);
+  clearTimeout(_preRollHandle.cap);
+  _preRollHandle = null;
+}
+
+// Keep the in-tab player paused until `target` seconds are buffered
+// ahead of the playhead, then run `onRelease` (which calls play()).
+// Polls the <video>'s buffered ranges every 250 ms; a safety cap
+// releases anyway on slow / low-bitrate streams so we never strand the
+// user on a frozen first frame.
+function _preRollBuffer(v, status, target, onRelease) {
+  _cancelPreRoll();
+  let done = false;
+  const release = () => {
+    if (done) return;
+    done = true;
+    _cancelPreRoll();
+    onRelease();
+  };
+  const tick = () => {
+    if (!mpegtsPlayer) { _cancelPreRoll(); return; }
+    const have = Math.floor(bufferedAhead(v.buffered, v.currentTime));
+    status.textContent = 'Buffering ' + Math.min(have, target) + '/' + target + ' s…';
+    status.className = 'gate-hint';
+    if (bufferReady(v.buffered, v.currentTime, target)) release();
+  };
+  const timer = setInterval(tick, 250);
+  const cap = setTimeout(release, (target + 15) * 1000);
+  _preRollHandle = { timer, cap };
+  tick();
+}
+
+// Read the Player card's buffer slider (falling back to the persisted
+// value if the control isn't mounted yet), normalised to [0, 60].
+function getPlaybackBuffer() {
+  const el = $('playback-buffer');
+  if (el) return clampBuffer(el.value);
+  return clampBuffer(localStorage.getItem(KEYS.PLAYBACK_BUFFER));
 }
 
 function stopInBrowserPlayback() {
   const v = $('pb-video');
   const status = $('pb-video-status');
+  // Drop any in-flight pre-roll wait before tearing the player down.
+  _cancelPreRoll();
   if (mpegtsPlayer) {
     try { mpegtsPlayer.pause(); } catch (_) {}
     try { mpegtsPlayer.unload(); } catch (_) {}
@@ -627,6 +709,9 @@ function stopInBrowserPlayback() {
     v.removeAttribute('src');
     v.load();
     v.style.display = 'none';
+    // Restore controls in case we stopped mid pre-roll (where they were
+    // stripped) — the next play starts from a clean default.
+    v.controls = true;
   }
   if (status) { status.textContent = ''; status.className = 'gate-hint'; }
   // Nothing is playing in this tab anymore — pull the Move button.
@@ -1949,6 +2034,20 @@ async function toggleDesktopEntry() {
     showAllCb.onchange = () => {
       localStorage.setItem(KEYS.SHOW_ALL_BROWSERS, showAllCb.checked ? '1' : '0');
       renderPlaybackTargets();
+    };
+  }
+  // In-tab pre-roll buffer slider — also a UI-only preference, persisted
+  // to localStorage. 0 = Off (live edge). Read at play time by
+  // startInBrowserPlayback; changes apply to the next Play.
+  const bufSlider = $('playback-buffer');
+  const bufOut = $('playback-buffer-out');
+  if (bufSlider) {
+    bufSlider.value = String(clampBuffer(localStorage.getItem(KEYS.PLAYBACK_BUFFER)));
+    if (bufOut) bufOut.textContent = bufferLabel(bufSlider.value);
+    bufSlider.oninput = () => {
+      const n = clampBuffer(bufSlider.value);
+      localStorage.setItem(KEYS.PLAYBACK_BUFFER, String(n));
+      if (bufOut) bufOut.textContent = bufferLabel(n);
     };
   }
   // (pb-stop button removed — Play button itself toggles to Stop.)

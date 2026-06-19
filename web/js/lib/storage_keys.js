@@ -11,5 +11,6 @@ export const KEYS = Object.freeze({
   LAST_PLAY: 'aceman.lastPlay',
   GLOW: 'aceman.acemanGlow',
   SHOW_ALL_BROWSERS: 'aceman.showAllBrowsers',
+  PLAYBACK_BUFFER: 'aceman.playbackBuffer', // in-tab pre-roll seconds
   RESTARTED_AT: 'aceman.restartedAt', // sessionStorage breadcrumb
 });

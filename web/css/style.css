@@ -43,6 +43,35 @@
   input[type=checkbox], input[type=radio],
   select,
   video { accent-color: var(--hover); }
+  /* Buffer slider — the browser default paints the track/thumb its
+     own accent (purple on Firefox). Recolour to the dirty-mustard
+     --hover used everywhere, sitting in a groove darker than the
+     #1a1a1a card so it reads as an inset channel. appearance:none
+     drops the native look so the custom track/thumb take over. */
+  input[type=range]#playback-buffer {
+    -webkit-appearance: none; appearance: none;
+    height: 6px; border-radius: 3px;
+    background: #0c0c0c; border: 1px solid #333;
+    cursor: pointer; padding: 0;
+  }
+  #playback-buffer::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--hover); border: none; cursor: pointer;
+  }
+  #playback-buffer::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--hover); border: none; cursor: pointer;
+  }
+  /* Firefox fills the played portion via ::-moz-range-progress;
+     Chrome has no equivalent without JS, so it keeps the dark groove
+     and just the mustard thumb. */
+  #playback-buffer::-moz-range-progress {
+    background: var(--hover); height: 6px; border-radius: 3px;
+  }
+  #playback-buffer:focus-visible {
+    outline: 2px solid var(--hover); outline-offset: 2px;
+  }
   button { padding: .4rem .8rem; margin: .15rem .15rem .15rem 0; cursor: pointer;
            background: #222; color: var(--fg); border: 1px solid #444; border-radius: 4px; font: inherit; }
   button:hover:not(:disabled) { border-color: var(--hover); }

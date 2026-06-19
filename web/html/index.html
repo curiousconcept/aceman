@@ -223,6 +223,14 @@
           <input type="checkbox" id="show-all-browsers"> Show all browser installs
         </label>
       </div>
+      <div class="field" id="buffer-field"
+           title="Only affects the in-tab browser player. Holds playback this many seconds behind the live edge, building a cushion so a brief engine/network hiccup doesn't stall the video. Higher = more delay, fewer stalls. 0 (Off) plays at the live edge as before. Applies on the next Play.">
+        <label class="field-label" for="playback-buffer">Buffer</label>
+        <input type="range" id="playback-buffer" min="0" max="60" step="1" value="0"
+               style="flex:1; min-width:0">
+        <output id="playback-buffer-out"
+                style="font-size:.78rem; color:var(--mut); min-width:4ch; text-align:right">Off</output>
+      </div>
       <div class="gate-hint" id="player-hint"></div>
     </div>
 
