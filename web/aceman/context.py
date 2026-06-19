@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pathlib
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, Optional
 
 from .broker_client import (
     BrowsersBrokerClient,
@@ -54,3 +54,11 @@ class RouteContext:
     # handler registration) since the user is reaching the web from a
     # Windows-side browser.
     is_wsl: bool = False
+    # Peek (don't consume) the pending-play cid that a second wrapper
+    # invocation pushed via POST /api/play-request. The engine.status
+    # route surfaces the value so the frontend's polling tab can claim
+    # it via POST /api/play-request/claim. Returns "" when nothing's
+    # pending. Injected as a callable so RouteContext stays a pure
+    # data class and tests can stub it with a lambda.
+    pending_play_cid_peek: Callable[[], str] = field(
+        default_factory=lambda: (lambda: ""))
