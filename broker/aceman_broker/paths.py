@@ -33,6 +33,14 @@ def wrapper_pid_file() -> pathlib.Path:
     return xdg_runtime_dir() / "aceman.active.pid"
 
 
+def wrapper_cid_file() -> pathlib.Path:
+    """Sibling to the pid file. The wrapper writes the cid being
+    played alongside its PID so the broker — and through it the web
+    UI — can answer "what's the wrapper playing?" without parsing
+    cmdline or guessing. Empty/absent when no wrapper is up."""
+    return xdg_runtime_dir() / "aceman.active.cid"
+
+
 def desktop_applications_dir() -> pathlib.Path:
     base = pathlib.Path(
         os.environ.get("XDG_DATA_HOME")
