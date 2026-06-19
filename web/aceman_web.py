@@ -1074,7 +1074,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         never reaches us. CORS-safelisted Content-Types (text/plain,
         form-urlencoded, multipart) DO reach us without preflight, so we
         refuse them explicitly. Effect: legit clients (our app, curl,
-        aceman_web_stop, _shutdown_other) all send application/json
+        `aceman_web --stop`, _shutdown_other) all send application/json
         and pass; cross-origin attackers can't satisfy this constraint
         without triggering preflight, which we block."""
         ct = (self.headers.get("Content-Type") or "").lower()
@@ -1699,7 +1699,7 @@ def main(argv: list[str] | None = None) -> int:
             if not sys.stdin.isatty():
                 print("  Another aceman_web instance is responding on "
                       f"http://{args.host}:{args.port}/.", file=sys.stderr)
-                print("  Re-run interactively or use ./aceman_web_stop first.",
+                print("  Re-run interactively or use `./aceman_web --stop` first.",
                       file=sys.stderr)
                 return 1
             print(f"  Another aceman_web is responding on http://{args.host}:{args.port}/.",

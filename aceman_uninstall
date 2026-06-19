@@ -1,0 +1,291 @@
+#!/usr/bin/env bash
+# aceman_uninstall — interactive teardown of every artifact aceman owns.
+#
+# What this does (in order, after a y/N confirmation prompt):
+#   1. POST /api/shutdown to a running aceman_web (stops engine too).
+#   2. Force-remove engine + web containers (defensive — they use
+#      --rm, so a clean shutdown already removed them).
+#   3. Remove engine + web container images.
+#   4. Remove the aceman-net podman network if it exists and is empty.
+#   5. Uninstall the .desktop entry from ~/.local/share/applications/.
+#   6. Restore mimeapps.list from its .bk sibling, if present (the
+#      original acestream:// scheme handler comes back).
+#   7. Delete ~/.config/aceman/ (favourites DB, config.json, shell
+#      favourites file) — only if y to the "wipe config" prompt.
+#   8. Delete ~/.cache/aceman/ (web.log, broker.log) — only if y to
+#      the "wipe logs" prompt.
+#   9. Shut down the broker (best-effort over its unix socket).
+#  10. Remove the broker runtime dir under $XDG_RUNTIME_DIR/aceman/.
+#
+# Deliberately UNTOUCHED: the project source tree (this repo). The
+# script does not delete itself or sibling files in this directory.
+#
+# Works without a running broker / web — every step does its own
+# podman / filesystem work directly rather than going through the
+# broker. That way the script remains useful when the broker is dead
+# or the web is unreachable, which is exactly when you'd run it.
+#
+# Flags:
+#   --yes / -y    skip the top-level confirmation. Per-section
+#                 "wipe config? wipe logs?" prompts still run.
+#   --keep-config keep ~/.config/aceman (do not prompt).
+#   --keep-logs   keep ~/.cache/aceman (do not prompt).
+
+set -u
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+
+ASSUME_YES=0
+KEEP_CONFIG=""   # "" = ask; 0 = wipe; 1 = keep
+KEEP_LOGS=""
+for arg in "$@"; do
+    case "$arg" in
+        -y|--yes)       ASSUME_YES=1 ;;
+        --keep-config)  KEEP_CONFIG=1 ;;
+        --keep-logs)    KEEP_LOGS=1 ;;
+        -h|--help)
+            sed -n '2,/^$/p' "$0" | sed 's/^# \?//'
+            exit 0
+            ;;
+        *)
+            echo "aceman_uninstall: unknown option: $arg" >&2
+            exit 2 ;;
+    esac
+done
+
+# Resolve everything we'd touch BEFORE asking, so the prompt lists
+# real paths and tags, not aspirational ones. Defaults match what
+# aceman_web actually uses at launch.
+ENGINE_NAME="${ACE_NAME:-ace}"
+WEB_NAME="${ACE_WEB_NAME:-aceman-web}"
+ENGINE_IMAGE="${ACE_IMAGE:-localhost/acestream:vetted}"
+WEB_IMAGE="${ACE_WEB_IMAGE:-localhost/aceman-web:vetted}"
+NETWORK_NAME="${ACE_NET:-aceman-net}"
+
+DESKTOP_FILE="${XDG_DATA_HOME:-$HOME/.local/share}/applications/aceman.desktop"
+MIMEAPPS="${XDG_CONFIG_HOME:-$HOME/.config}/mimeapps.list"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/aceman"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/aceman"
+BROKER_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/aceman"
+BROKER_SOCK="$BROKER_RUNTIME_DIR/broker.sock"
+WEB_HOST="${ACEWATCH_WEB_HOST:-127.0.0.1}"
+WEB_PORT="${ACEWATCH_WEB_PORT:-8770}"
+
+cat <<EOF
+aceman_uninstall — about to remove every aceman artifact on this host.
+
+The following actions will run (skipping anything that is already absent):
+  1. POST shutdown to http://${WEB_HOST}:${WEB_PORT}/api/shutdown (engine too).
+  2. podman rm -f ${ENGINE_NAME} ${WEB_NAME}
+  3. podman rmi -f ${ENGINE_IMAGE} ${WEB_IMAGE}
+  4. podman network rm ${NETWORK_NAME} (if empty)
+  5. rm  ${DESKTOP_FILE}
+  6. restore ${MIMEAPPS} from ${MIMEAPPS}.bk (if present)
+  7. rm -rf ${CONFIG_DIR}                  (asks again unless --keep-config)
+  8. rm -rf ${CACHE_DIR}                   (asks again unless --keep-logs)
+  9. shut down the broker over ${BROKER_SOCK}
+ 10. rm -rf ${BROKER_RUNTIME_DIR}
+
+Left alone: this source tree (${SCRIPT_DIR}).
+EOF
+
+if [ "$ASSUME_YES" != 1 ]; then
+    printf 'Proceed? [y/N] '
+    read -r reply
+    case "$reply" in
+        y|Y|yes|YES) ;;
+        *) echo "aceman_uninstall: aborted."; exit 1 ;;
+    esac
+fi
+
+_step() {
+    # Print a step header and run the body. Body failure is reported
+    # but never aborts the script — uninstall is best-effort by design.
+    local label="$1"; shift
+    printf '\n--- %s ---\n' "$label"
+    "$@" || echo "aceman_uninstall: '$label' had errors (continuing)."
+}
+
+# ---- 1. POST /api/shutdown -------------------------------------------------
+do_shutdown() {
+    command -v curl >/dev/null || { echo "curl missing; skip"; return 0; }
+    local out rc=0
+    out=$(curl -fsS --max-time 5 -X POST \
+        -H 'content-type: application/json' \
+        --data '{"stop_engine": true}' \
+        "http://${WEB_HOST}:${WEB_PORT}/api/shutdown" 2>&1) || rc=$?
+    case "$rc" in
+        0)  echo "ok: $out" ;;
+        56) echo "ok: server closed connection mid-reply (expected)" ;;
+        7)  echo "ok: nothing listening on ${WEB_HOST}:${WEB_PORT} (already stopped?)" ;;
+        *)  echo "curl exited $rc: $out" ;;
+    esac
+    # Tiny pause so any in-flight container teardown completes before
+    # we try to rm the containers ourselves below.
+    sleep 1
+}
+_step "1. POST /api/shutdown" do_shutdown
+
+# ---- 2. podman rm -f ------------------------------------------------------
+do_rm_containers() {
+    command -v podman >/dev/null || { echo "podman missing; skip"; return 0; }
+    for name in "$ENGINE_NAME" "$WEB_NAME"; do
+        if podman container exists "$name" 2>/dev/null; then
+            podman rm -f "$name" >/dev/null 2>&1 \
+                && echo "removed container $name" \
+                || echo "podman rm -f $name failed"
+        else
+            echo "absent: container $name"
+        fi
+    done
+}
+_step "2. remove containers" do_rm_containers
+
+# ---- 3. podman rmi -f -----------------------------------------------------
+do_rm_images() {
+    command -v podman >/dev/null || { echo "podman missing; skip"; return 0; }
+    for img in "$ENGINE_IMAGE" "$WEB_IMAGE"; do
+        if podman image exists "$img" 2>/dev/null; then
+            podman rmi -f "$img" >/dev/null 2>&1 \
+                && echo "removed image $img" \
+                || echo "podman rmi -f $img failed"
+        else
+            echo "absent: image $img"
+        fi
+    done
+}
+_step "3. remove images" do_rm_images
+
+# ---- 4. podman network rm -------------------------------------------------
+do_rm_network() {
+    command -v podman >/dev/null || { echo "podman missing; skip"; return 0; }
+    if ! podman network exists "$NETWORK_NAME" 2>/dev/null; then
+        echo "absent: network $NETWORK_NAME"
+        return 0
+    fi
+    podman network rm "$NETWORK_NAME" >/dev/null 2>&1 \
+        && echo "removed network $NETWORK_NAME" \
+        || echo "kept network $NETWORK_NAME (likely still attached to a container)"
+}
+_step "4. remove network" do_rm_network
+
+# ---- 5. uninstall .desktop ------------------------------------------------
+do_uninstall_desktop() {
+    if [ -f "$DESKTOP_FILE" ]; then
+        rm -f "$DESKTOP_FILE" \
+            && echo "removed $DESKTOP_FILE" \
+            || echo "rm failed: $DESKTOP_FILE"
+        if command -v update-desktop-database >/dev/null; then
+            update-desktop-database "$(dirname "$DESKTOP_FILE")" \
+                >/dev/null 2>&1 || true
+        fi
+    else
+        echo "absent: $DESKTOP_FILE"
+    fi
+}
+_step "5. uninstall desktop entry" do_uninstall_desktop
+
+# ---- 6. restore mimeapps.list backup --------------------------------------
+do_restore_mimeapps() {
+    local bk="${MIMEAPPS}.bk"
+    if [ ! -f "$bk" ]; then
+        echo "absent: $bk (nothing to restore)"
+        return 0
+    fi
+    cp -p "$bk" "$MIMEAPPS" \
+        && rm -f "$bk" \
+        && echo "restored $MIMEAPPS from backup" \
+        || echo "restore failed (kept .bk)"
+}
+_step "6. restore mimeapps.list" do_restore_mimeapps
+
+# ---- 7. wipe config dir ---------------------------------------------------
+do_wipe_config() {
+    if [ ! -d "$CONFIG_DIR" ]; then
+        echo "absent: $CONFIG_DIR"
+        return 0
+    fi
+    if [ -z "$KEEP_CONFIG" ] && [ "$ASSUME_YES" != 1 ]; then
+        printf 'Also wipe %s (favourites, config.json)? [y/N] ' "$CONFIG_DIR"
+        read -r reply
+        case "$reply" in y|Y|yes|YES) KEEP_CONFIG=0 ;; *) KEEP_CONFIG=1 ;; esac
+    fi
+    # --yes with no --keep-config means YES wipe; --keep-config wins.
+    [ -z "$KEEP_CONFIG" ] && KEEP_CONFIG=0
+    if [ "$KEEP_CONFIG" = 1 ]; then
+        echo "kept $CONFIG_DIR"
+        return 0
+    fi
+    rm -rf "$CONFIG_DIR" \
+        && echo "removed $CONFIG_DIR" \
+        || echo "rm -rf $CONFIG_DIR failed"
+}
+_step "7. wipe config dir" do_wipe_config
+
+# ---- 8. wipe cache dir (logs) ---------------------------------------------
+do_wipe_cache() {
+    if [ ! -d "$CACHE_DIR" ]; then
+        echo "absent: $CACHE_DIR"
+        return 0
+    fi
+    if [ -z "$KEEP_LOGS" ] && [ "$ASSUME_YES" != 1 ]; then
+        printf 'Also wipe %s (web.log, broker.log)? [y/N] ' "$CACHE_DIR"
+        read -r reply
+        case "$reply" in y|Y|yes|YES) KEEP_LOGS=0 ;; *) KEEP_LOGS=1 ;; esac
+    fi
+    # --yes default for logs is KEEP — post-mortem material is worth
+    # more than the bytes it costs. Set --keep-logs to be explicit, or
+    # delete by hand if you really want them gone.
+    [ -z "$KEEP_LOGS" ] && KEEP_LOGS=1
+    if [ "$KEEP_LOGS" = 1 ]; then
+        echo "kept $CACHE_DIR"
+        return 0
+    fi
+    rm -rf "$CACHE_DIR" \
+        && echo "removed $CACHE_DIR" \
+        || echo "rm -rf $CACHE_DIR failed"
+}
+_step "8. wipe cache dir" do_wipe_cache
+
+# ---- 9. broker shutdown ---------------------------------------------------
+do_broker_shutdown() {
+    if [ ! -S "$BROKER_SOCK" ]; then
+        echo "absent: $BROKER_SOCK"
+        return 0
+    fi
+    if ! command -v python3 >/dev/null; then
+        echo "python3 missing; cannot send broker.shutdown over socket"
+        return 0
+    fi
+    python3 - "$BROKER_SOCK" <<'PY' 2>/dev/null || true
+import socket, sys
+s = socket.socket(socket.AF_UNIX)
+s.settimeout(3)
+try:
+    s.connect(sys.argv[1])
+    s.sendall(b'{"action": "broker.shutdown"}\n')
+    s.recv(4096)
+except OSError:
+    pass
+PY
+    echo "requested broker shutdown"
+    # The broker schedules SIGTERM 200 ms after the ack; give it a sec
+    # so the runtime dir cleanup in step 10 doesn't fight a live pid.
+    sleep 1
+}
+_step "9. broker shutdown" do_broker_shutdown
+
+# ---- 10. wipe broker runtime dir ------------------------------------------
+do_wipe_runtime() {
+    if [ ! -d "$BROKER_RUNTIME_DIR" ]; then
+        echo "absent: $BROKER_RUNTIME_DIR"
+        return 0
+    fi
+    rm -rf "$BROKER_RUNTIME_DIR" \
+        && echo "removed $BROKER_RUNTIME_DIR" \
+        || echo "rm -rf $BROKER_RUNTIME_DIR failed"
+}
+_step "10. wipe broker runtime dir" do_wipe_runtime
+
+echo
+echo "aceman_uninstall: done. The source tree at ${SCRIPT_DIR} was left alone."

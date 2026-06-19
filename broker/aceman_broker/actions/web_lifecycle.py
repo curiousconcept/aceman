@@ -7,7 +7,7 @@ to be spawned).
 
 ``broker.respawn`` exec's the broker into a fresh copy of itself
 so a `git pull` + Restart picks up broker-side changes without a
-manual ``aceman_web_stop`` + relaunch. Guarded by an import
+manual ``aceman_web --stop`` + relaunch. Guarded by an import
 pre-flight (see action body) so a syntax error in the new code
 doesn't leave the operator with no broker.
 
@@ -99,7 +99,7 @@ def action_broker_respawn(params: "dict | None" = None) -> dict:
     """Replace the broker process in place with a fresh copy that
     reads the on-disk code from scratch — used by ``/api/restart`` so
     a ``git pull`` + Restart cycle picks up broker-side changes
-    without making the operator run ``aceman_web_stop`` first.
+    without making the operator run ``aceman_web --stop`` first.
 
     Pre-flight: launch a throwaway ``python -c "import
     aceman_broker.main"`` to confirm the new code at least loads.

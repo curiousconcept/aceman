@@ -24,6 +24,22 @@
 #                   are labelled with the sha so subsequent launches
 #                   reuse them as long as the label matches.
 #                   Also honored via ACE_COMMIT=<sha>.
+#   --stop        — POST /api/shutdown to a running aceman_web and exit
+#                   WITHOUT bootstrapping anything. Pair with
+#                   `--keep-engine` to leave the engine container alive.
+#                   Talks to ACEWATCH_WEB_HOST / ACEWATCH_WEB_PORT
+#                   (defaults 127.0.0.1:8770 — the container-mode port).
+#                   Override via --host / --port. Replaces the old
+#                   separate aceman_web_stop script.
+#   --hard-refresh — stop the web (and engine), force-remove the
+#                   engine and web container images, and ask the
+#                   broker to exit. Then EXIT — does not relaunch.
+#                   Run `aceman_web` again afterwards to rebuild
+#                   everything from scratch (no layer-label cache hit
+#                   on the next build because the images are gone).
+#                   Leaves ~/.config/aceman + ~/.cache/aceman alone;
+#                   use the separate `aceman_uninstall` script for a
+#                   full wipe.
 #
 # WSL behaviour: when /proc/sys/kernel/osrelease says we're inside WSL,
 # the wrapper automatically serves to a Windows-side browser:
@@ -166,6 +182,132 @@ for _arg in "$@"; do
 done
 unset _arg _mode
 unset -f _resolve_playback_mode
+
+# --stop / --hard-refresh — wrapper-only flags that tear down a running
+# aceman_web (and, for --hard-refresh, the engine + web images and the
+# broker too) and EXIT before the normal bootstrap. Folded into this
+# wrapper so there is one binary in PATH; the previous standalone
+# aceman_web_stop script no longer exists. We intentionally run this
+# BEFORE the tee redirect below — these flags should print to the
+# user's terminal, not vanish into web.log.
+_tear_mode=""
+for _arg in "$@"; do
+    case "$_arg" in
+        --stop)         _tear_mode="stop" ;;
+        --hard-refresh) _tear_mode="hard_refresh" ;;
+    esac
+done
+if [ -n "$_tear_mode" ]; then
+    _keep_engine=0
+    _stop_host="${ACEWATCH_WEB_HOST:-127.0.0.1}"
+    # Default to the container-mode publish port. Native mode (port
+    # 8765) is the rare path now; pass --port for that case.
+    _stop_port="${ACEWATCH_WEB_PORT:-8770}"
+    _expect=""
+    for _arg in "$@"; do
+        if [ -n "$_expect" ]; then
+            case "$_expect" in
+                host) _stop_host="$_arg" ;;
+                port) _stop_port="$_arg" ;;
+            esac
+            _expect=""
+            continue
+        fi
+        case "$_arg" in
+            --keep-engine) _keep_engine=1 ;;
+            --host)        _expect="host" ;;
+            --port)        _expect="port" ;;
+            --stop|--hard-refresh) ;;  # already consumed
+            *) echo "aceman_web $_tear_mode: unexpected argument: $_arg" >&2; exit 2 ;;
+        esac
+    done
+    unset _arg _expect
+
+    # --hard-refresh always kills the engine (its image is about to be
+    # rmi'd). --stop honours --keep-engine.
+    if [ "$_tear_mode" = "hard_refresh" ] || [ "$_keep_engine" = 0 ]; then
+        _stop_engine=true
+    else
+        _stop_engine=false
+    fi
+    _shutdown_url="http://${_stop_host}:${_stop_port}/api/shutdown"
+    _shutdown_body="{\"stop_engine\": ${_stop_engine}}"
+
+    # The web's shutdown handler closes the listening socket right
+    # after sending the 202, so curl frequently sees exit 56 (recv
+    # failure) on the success path. exit 7 = "couldn't connect" means
+    # nothing was listening — also a success for our purposes.
+    _http_out=""
+    _http_rc=0
+    if command -v curl >/dev/null; then
+        _http_out=$(curl -fsS --max-time 5 -X POST \
+            -H 'content-type: application/json' \
+            --data "$_shutdown_body" "$_shutdown_url" 2>&1) || _http_rc=$?
+        case "$_http_rc" in
+            0)  echo "aceman_web: $_http_out" ;;
+            56) echo "aceman_web: server closed connection (expected; shutdown in flight)" ;;
+            7)  echo "aceman_web: nothing listening on ${_stop_host}:${_stop_port} (already stopped?)" ;;
+            *)  echo "aceman_web: curl exited $_http_rc: $_http_out" >&2 ;;
+        esac
+    else
+        echo "aceman_web: curl missing — cannot POST /api/shutdown" >&2
+        [ "$_tear_mode" = "stop" ] && exit 1
+    fi
+
+    if [ "$_tear_mode" = "stop" ]; then
+        case "$_http_rc" in 0|56|7) exit 0 ;; *) exit "$_http_rc" ;; esac
+    fi
+
+    # ---- hard-refresh: containers + images + broker --------------------
+    # Give the web/engine a beat to actually exit so podman doesn't race
+    # the shutdown that's still in flight from the curl above.
+    sleep 1
+
+    if command -v podman >/dev/null; then
+        for _name in "${ACE_NAME:-ace}" "${ACE_WEB_NAME:-aceman-web}"; do
+            if podman container exists "$_name" 2>/dev/null; then
+                podman rm -f "$_name" >/dev/null 2>&1 \
+                    && echo "aceman_web: removed container $_name" \
+                    || echo "aceman_web: podman rm -f $_name failed" >&2
+            fi
+        done
+        for _img in "${ACE_IMAGE:-localhost/acestream:vetted}" \
+                    "${ACE_WEB_IMAGE:-localhost/aceman-web:vetted}"; do
+            if podman image exists "$_img" 2>/dev/null; then
+                podman rmi -f "$_img" >/dev/null 2>&1 \
+                    && echo "aceman_web: removed image $_img" \
+                    || echo "aceman_web: podman rmi -f $_img failed" >&2
+            fi
+        done
+    else
+        echo "aceman_web: podman missing — skipping container/image cleanup" >&2
+    fi
+
+    _broker_sock_hr="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/aceman/broker.sock"
+    if [ -S "$_broker_sock_hr" ] && command -v python3 >/dev/null; then
+        # python3 over the unix socket avoids depending on socat / `nc -U`.
+        # The broker's shutdown action returns a JSON ack then SIGTERMs
+        # itself 200 ms later, so we only need to deliver the request.
+        python3 - "$_broker_sock_hr" <<'PY' 2>/dev/null || true
+import socket, sys
+s = socket.socket(socket.AF_UNIX)
+s.settimeout(3)
+try:
+    s.connect(sys.argv[1])
+    s.sendall(b'{"action": "broker.shutdown"}\n')
+    s.recv(4096)
+except OSError:
+    pass
+PY
+        echo "aceman_web: requested broker shutdown"
+    fi
+
+    echo "aceman_web: hard refresh complete. Run \`aceman_web\` again to rebuild from scratch."
+    exit 0
+fi
+unset _tear_mode _arg _keep_engine _stop_host _stop_port _stop_engine \
+      _shutdown_url _shutdown_body _http_out _http_rc _broker_sock_hr \
+      _name _img
 
 # Capture wrapper output to web.log from this point on. The desktop
 # entry has no terminal, so without this every "build failed" /

@@ -377,7 +377,8 @@ disable UPnP on your router so the engine can't punch its own inbound hole.
 │       └── run-web-container.sh # rootless podman run, mounts broker socket
 ├── aceman               # shell CLI
 ├── aceman_web           # bash launcher → web/aceman_web.py
-├── aceman_web_stop      # curl wrapper for /api/shutdown
+│                          (also handles --stop / --hard-refresh)
+├── aceman_uninstall     # interactive teardown of every artifact we own
 ├── broker/
 │   └── aceman-broker         # stdlib Python allow-list service (unix socket).
 │                               # Auto-spawned by ./aceman_web; no install step.
