@@ -34,7 +34,7 @@ from .restart_helpers import (
 )
 from ..logging_util import _log, _safe
 from ..validators import validate_lines
-from ..wrapper import wrapper_alive
+from ..wrapper import wrapper_alive, wrapper_cid
 from . import register
 
 
@@ -101,11 +101,18 @@ def action_engine_logs(params: "dict | None" = None) -> dict:
 
 def action_engine_status(params: "dict | None" = None) -> dict:
     state = container_state()
+    alive = wrapper_alive()
     return {
         "container": state == "running",
         "container_state": state,
         "up": engine_probe(),
-        "wrapper_alive": wrapper_alive(),
+        "wrapper_alive": alive,
+        # The cid the wrapper is currently playing, when it's alive.
+        # Lets the web UI populate the Watch input and look up the
+        # name in favourites for streams that bypassed the web
+        # entirely (acestream:// link → desktop entry → external
+        # player). Empty when no wrapper is up.
+        "wrapper_cid": wrapper_cid() if alive else "",
     }
 
 

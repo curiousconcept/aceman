@@ -1097,17 +1097,34 @@ async function refreshEngineStatus() {
   // we lost the in-memory livePlaybackTarget. Recover it from the
   // saved player preference so the Play button immediately shows the
   // stop glyph (▶ → ⏹) without waiting for the user to act. Same go
-  // for the cid + display name — stashed in localStorage on play()
-  // and re-hydrated here so a reload doesn't lose what's playing.
+  // for the cid + display name:
+  //   1. server-provided wrapper_cid wins (covers the
+  //      acestream://-link flow where the web never played anything
+  //      itself — localStorage is empty there, but the shell wrapper
+  //      writes its cid to a runtime file the broker surfaces)
+  //   2. fall back to the localStorage stash (covers the in-tab Play
+  //      then reload flow)
+  // Name is resolved from favourites whenever we only have a cid —
+  // typing/clicking a saved cid should still show its name.
   if (!livePlaybackTarget && s.wrapper_alive === true
       && cfg.playback_mode === 'external' && cfg.default_player) {
     livePlaybackTarget = encodeTarget('external', cfg.default_player, cfg.default_player_source);
     const last = loadLastPlay(localStorage);
-    if (last) {
-      current = { cid: last.cid, name: last.name };
-      setTabTitle(last.name);
-      $('cid-input').value = last.cid;
-      setNowPlayingName(last.name, last.sub);
+    const cid = (s.wrapper_cid && /^[a-f0-9]{40}$/.test(s.wrapper_cid))
+                ? s.wrapper_cid
+                : (last && last.cid) || '';
+    if (cid) {
+      // If we got the cid from the wrapper we don't have a name —
+      // resolveDisplayName takes care of the favourites lookup
+      // (same call play() uses) so an already-saved channel surfaces
+      // its name automatically.
+      const fromLast = last && last.cid === cid ? last : null;
+      const { name: displayName, sub: displaySub } =
+          resolveDisplayName(fromLast || {}, allFavs, cid);
+      current = { cid, name: displayName, altName: displaySub };
+      setTabTitle(displayName);
+      $('cid-input').value = cid;
+      setNowPlayingName(displayName, displaySub);
       $('now-playing').style.display = 'block';
       updateSaveButton();
     }

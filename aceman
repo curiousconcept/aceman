@@ -102,6 +102,12 @@ FAV_FILE="${ACE_FAVORITES:-${XDG_CONFIG_HOME:-$HOME/.config}/aceman/favorites}"
 ACE_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/aceman-$(id -u 2>/dev/null || echo 0)}"
 ACE_LOCK_FILE="$ACE_RUNTIME_DIR/aceman.lock"
 ACE_PID_FILE="$ACE_RUNTIME_DIR/aceman.active.pid"
+# Sibling to active.pid, written at the same time and removed in the
+# same cleanup. Lets the broker tell the web "the wrapper at this PID
+# is playing THIS cid", so an acestream:// click that bypassed the
+# web (external playback mode) still surfaces the cid + favourite
+# name in the browser tab. Empty when nothing's playing.
+ACE_CID_FILE="$ACE_RUNTIME_DIR/aceman.active.cid"
 # Initialised early so the EXIT trap (which can fire any time after it's
 # installed) reads from a known state even if we exit before launch.
 PLAYER_PID=""
@@ -312,6 +318,17 @@ acquire_active_session() {
         fi
     fi
     echo "$$" > "$ACE_PID_FILE"
+    # Write the cid alongside the PID so the broker — and through it
+    # the web UI — can answer "what's currently playing?" without
+    # having to parse anything. Empty CID (e.g. --url / --infohash
+    # paths) just clears the file. Skip when CID is empty rather than
+    # writing an empty file so a stale read from before our acquire
+    # can't ever look valid.
+    if [ -n "$CID" ]; then
+        echo "$CID" > "$ACE_CID_FILE"
+    else
+        rm -f "$ACE_CID_FILE"
+    fi
     if command -v flock >/dev/null; then
         flock -u 9
     fi
@@ -905,7 +922,7 @@ cleanup() {
     # signalling us — in that case the marker belongs to them now.
     if [ -r "$ACE_PID_FILE" ] \
        && [ "$(cat "$ACE_PID_FILE" 2>/dev/null)" = "$$" ]; then
-        rm -f "$ACE_PID_FILE"
+        rm -f "$ACE_PID_FILE" "$ACE_CID_FILE"
     fi
     # Remind about the engine if its container is still up — whether we
     # started it this invocation or it was already running from a previous
