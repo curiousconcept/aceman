@@ -893,6 +893,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if do_dei:
             filters.append("yadif")
         if scale_h:
+            filters.append("format=yuv420p")
             filters.append(f"libplacebo=w=-2:h={scale_h}:upscaler=spline36")
 
         if do_enc:
@@ -940,8 +941,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if do_dei:
             filters.append("yadif")
         if scale_h:
-            # libplacebo: Vulkan-accelerated upscale, CPU frames in/out.
-            # spline36 is a good quality/speed balance for broadcast upscaling.
+            # format=yuv420p pins the pixel format before libplacebo so ffmpeg
+            # never inserts an auto_scale node that fails when the h264 decoder
+            # resets its output format on corrupt input mid-stream.
+            filters.append("format=yuv420p")
             filters.append(f"libplacebo=w=-2:h={scale_h}:upscaler=spline36")
 
         if do_enc:
