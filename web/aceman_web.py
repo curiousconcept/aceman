@@ -1006,19 +1006,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
             src = cls._probe_src_dims(playback_url)
             src_w, src_h = src if src else (None, None)
             if do_enc:
-                # Zero-copy path: Vulkan device derived from VAAPI so they share
-                # the same DMA-bufs.  hwmap hands the upscaled frame to VAAPI
-                # without a CPU round-trip — critical on iGPU (shared DDR).
+                # VAAPI VPP upscale: all-GPU, no Vulkan.
+                # CPU prescale locks dims → format=nv12 → hwupload → scale_vaapi.
+                # No -hwaccel vaapi so scale_vaapi only ever receives clean VAAPI
+                # surfaces from hwupload (avoids the CPU↔VAAPI mixing stall).
                 pre = [
                     "ffmpeg", "-hide_banner", "-loglevel", "warning",
-                    "-init_hw_device", f"vaapi=va:{device}",
-                    "-init_hw_device", "vulkan=vk@va",
-                    "-filter_hw_device", "vk",
+                    "-vaapi_device", device,
                     "-fflags", "+nobuffer+discardcorrupt", "-err_detect", "ignore_err",
                     "-flush_packets", "1",
                     "-i", playback_url,
                 ]
-                filters.extend(cls._libplacebo_scale(src_w, src_h, scale_h, vaapi_out=True))
+                if src_w and src_h:
+                    filters.append(f"scale={src_w}:{src_h}")
+                    out_w = (src_w * scale_h // src_h // 2) * 2
+                    vaapi_scale = f"scale_vaapi=w={out_w}:h={scale_h}"
+                else:
+                    vaapi_scale = f"scale_vaapi=w=-2:h={scale_h}"
+                filters += ["format=nv12", "hwupload", vaapi_scale]
+                _log("proxy", "scale: VAAPI VPP → %dp", scale_h)
                 video = ["-vf", ",".join(filters), "-c:v", "h264_vaapi"] + cls._FFMPEG_GOP_VAAPI
             else:
                 pre = [
