@@ -894,24 +894,38 @@ class Handler(http.server.BaseHTTPRequestHandler):
         stream still plays rather than failing silently.
         """
         if not gpu:
-            return cls._cpu_cmd(playback_url)
-        backend = gpu.get("backend")
-        if backend == "nvidia":
+            cmd = cls._cpu_cmd(playback_url)
+        elif gpu.get("backend") == "nvidia":
             if not (cls._gpu_caps or {}).get("nvidia"):
                 _log("proxy", "NVIDIA requested but nvidia-smi absent — CPU fallback")
-                return cls._cpu_cmd(playback_url)
-            _log("proxy", "using NVIDIA path (enc=%s dei=%s scale=%s)",
-                 gpu.get("encode"), gpu.get("deinterlace"), gpu.get("scale"))
-            return cls._nvidia_cmd(playback_url, gpu)
-        if backend in ("vaapi", "qsv"):
+                cmd = cls._cpu_cmd(playback_url)
+            else:
+                cmd = cls._nvidia_cmd(playback_url, gpu)
+        elif gpu.get("backend") in ("vaapi", "qsv"):
             if not (cls._gpu_caps or {}).get("vaapi"):
                 _log("proxy", "VA-API requested but device absent — CPU fallback")
-                return cls._cpu_cmd(playback_url)
-            _log("proxy", "using VA-API path (enc=%s dei=%s scale=%s)",
-                 gpu.get("encode"), gpu.get("deinterlace"), gpu.get("scale"))
-            return cls._vaapi_cmd(playback_url, gpu)
-        _log("proxy", "unrecognised backend %r — CPU fallback", backend)
-        return cls._cpu_cmd(playback_url)
+                cmd = cls._cpu_cmd(playback_url)
+            else:
+                cmd = cls._vaapi_cmd(playback_url, gpu)
+        else:
+            _log("proxy", "unrecognised backend %r — CPU fallback", gpu.get("backend"))
+            cmd = cls._cpu_cmd(playback_url)
+        cls._log_pipeline(cmd)
+        return cmd
+
+    @staticmethod
+    def _log_pipeline(cmd: list) -> None:
+        vf = "(no filter chain)"
+        enc = "copy"
+        for i, part in enumerate(cmd):
+            if part == "-vf" and i + 1 < len(cmd):
+                vf = cmd[i + 1]
+            if part == "-c:v" and i + 1 < len(cmd):
+                enc = cmd[i + 1]
+        hw_devices = [cmd[i + 1] for i, p in enumerate(cmd)
+                      if p == "-init_hw_device" and i + 1 < len(cmd)]
+        hw_str = "  hw_devices=[%s]" % ", ".join(hw_devices) if hw_devices else ""
+        _log("proxy", "ffmpeg pipeline: filters=[%s]  encoder=%s%s", vf, enc, hw_str)
 
     @classmethod
     def _cpu_cmd(cls, playback_url: str) -> list:
