@@ -260,27 +260,30 @@
         <span id="gpu-backend-label" class="status"></span>
       </div>
       <div class="field">
-        <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
+        <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer"
+               title="The GPU compresses the video instead of the CPU. CPU stays cooler and freer for other tasks. Quality is the same. Leave this on unless you see problems.">
           <input type="checkbox" id="gpu-encode">
           GPU encode
-          <span style="color:var(--mut);font-size:.8rem">(replaces libx264 — lower CPU, same quality)</span>
+          <span style="color:var(--mut);font-size:.8rem">(less CPU heat, same quality)</span>
         </label>
       </div>
       <div class="field">
-        <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
+        <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer"
+               title="Live TV is often recorded in interlaced format — two half-frames stitched together — which looks like horizontal combing on fast motion. This filter merges them into a clean full frame. Only needed for traditional broadcast channels; most streams don't need it.">
           <input type="checkbox" id="gpu-deinterlace">
-          Deinterlace on GPU
-          <span style="color:var(--mut);font-size:.8rem">(replaces CPU yadif)</span>
+          Deinterlace
+          <span style="color:var(--mut);font-size:.8rem">(fixes combing on broadcast TV)</span>
         </label>
       </div>
       <div class="field">
-        <span class="field-label">Upscale to</span>
-        <select id="gpu-upscale">
-          <option value="">Off</option>
+        <span class="field-label"
+              title="The source stream is usually 1080p. If your screen is 4K, the browser would normally stretch that 1080p image to fill the screen, which looks blurry. Turning this on makes the GPU do that stretching before sending it to your browser — the result looks sharper. Needs GPU encode on. Uses more GPU and slows buffering on weak hardware.">Upscale to</span>
+        <select id="gpu-upscale"
+                title="Off = browser stretches the image (fast, blurry on 4K). 1080p / 4K = GPU upscales before sending (sharper, uses more resources).">
+          <option value="">Off — browser scales</option>
           <option value="1080">1080p</option>
-          <option value="2160">4K</option>
+          <option value="2160">4K (needs strong GPU)</option>
         </select>
-        <span class="field-suffix" id="gpu-upscale-note" style="display:none">720p→1080p is real-time; 1080p→4K is not</span>
       </div>
     </div>
     <div class="gate-hint" id="gpu-hint" style="margin-top:.3rem"></div>
