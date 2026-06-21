@@ -1006,10 +1006,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             src = cls._probe_src_dims(playback_url)
             src_w, src_h = src if src else (None, None)
             if do_enc:
-                # CPU bicubic upscale → VAAPI encode.
-                # scale_vaapi VPP is unreliable on radeonsi (SIGSEGV on some builds).
-                # libswscale bicubic handles any input dimension safely; h264_vaapi
-                # handles the expensive part (encoding 4K) in hardware.
+                # VAAPI VPP upscale: all-GPU, no Vulkan.
+                # CPU prescale locks dims → format=nv12 → hwupload → scale_vaapi.
+                # No -hwaccel vaapi so scale_vaapi only ever receives clean VAAPI
+                # surfaces from hwupload (avoids the CPU↔VAAPI mixing stall).
                 pre = [
                     "ffmpeg", "-hide_banner", "-loglevel", "warning",
                     "-vaapi_device", device,
@@ -1017,9 +1017,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     "-flush_packets", "1",
                     "-i", playback_url,
                 ]
-                filters.append(f"scale=-2:{scale_h}:flags=bicubic")
-                filters += ["format=nv12", "hwupload"]
-                _log("proxy", "scale: CPU bicubic → %dp + VAAPI encode", scale_h)
+                if src_w and src_h:
+                    filters.append(f"scale={src_w}:{src_h}")
+                    out_w = (src_w * scale_h // src_h // 2) * 2
+                    vaapi_scale = f"scale_vaapi=w={out_w}:h={scale_h}"
+                else:
+                    vaapi_scale = f"scale_vaapi=w=-2:h={scale_h}"
+                filters += ["format=nv12", "hwupload", vaapi_scale]
+                _log("proxy", "scale: VAAPI VPP → %dp", scale_h)
                 video = ["-vf", ",".join(filters), "-c:v", "h264_vaapi"] + cls._FFMPEG_GOP_VAAPI
             else:
                 pre = [
