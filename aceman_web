@@ -581,15 +581,23 @@ fi
 if [ "$_open_browser" = 1 ] && [ "$WEB_USE_CONTAINER" = 1 ]; then
     _url="http://${_eff_host}:${_eff_port}/"
     if command -v xdg-open >/dev/null; then
-        # Use bash 1-arg /dev/tcp instead of curl so the polling
-        # helper doesn't pull in a curl dependency just for a TCP
-        # probe. Time out after ~30s — if the container hasn't
-        # bound by then, something's wrong and the user should see
-        # the browser error rather than us silently swallowing it.
+        # Use bash /dev/tcp to probe without a curl dependency.
+        # A bare TCP-connect is not enough: rootless podman's userspace
+        # network stack (slirp4netns / pasta) accepts the TCP handshake
+        # as soon as the container starts, before Python inside has
+        # called serve_forever(). Opening the browser at that point
+        # produces NS_ERROR_NET_EMPTY_RESPONSE. Send a real HTTP request
+        # and wait for an "HTTP/" response line — that confirms Python
+        # is actually serving. Time out after ~30s.
         ( setsid bash -c '
             for _ in $(seq 1 60); do
-                if (exec 3<>/dev/tcp/'"$_eff_host"'/'"$_eff_port"') 2>/dev/null; then
+                if (
+                    exec 3<>/dev/tcp/'"$_eff_host"'/'"$_eff_port"'
+                    printf "GET / HTTP/1.0\r\nHost: '"$_eff_host"'\r\n\r\n" >&3
+                    IFS= read -t 2 _resp <&3
                     exec 3>&- 3<&-
+                    [[ "$_resp" == HTTP/* ]]
+                ) 2>/dev/null; then
                     xdg-open "'"$_url"'" >/dev/null 2>&1
                     exit 0
                 fi

@@ -255,7 +255,7 @@
      up consistently regardless of label length. */
   .field { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
            margin: .35rem 0; }
-  .field-label { color: var(--mut); font-size: .82rem; min-width: 5.5rem; }
+  .field-label { min-width: 5.5rem; }
   .field-suffix { color: var(--mut); font-size: .78rem; }
   /* Player card's first field ("Play in") is centered horizontally so
      the label + dropdown sit together in the middle of the card,
@@ -308,18 +308,51 @@
                             0 0 31px rgba(57,255,106,.28); }
   }
 
-  /* Visual hint that a label carries a hover tooltip.
-     Dashed underline + help cursor is the long-standing web
-     convention; we use a low-contrast color and `decoration-style:
-     dotted` (slightly lighter than dashed) so it doesn't compete with
-     real underlined links. Browsers render the native title= bubble on
-     hover — no JS, no extra DOM. */
+  /* Dotted underline hint for elements with a native title= tooltip
+     (set dynamically by JS). Keep in sync with .tip below. */
   .has-tooltip {
     text-decoration: underline dotted var(--mut);
     text-decoration-thickness: 1px;
     text-underline-offset: 2px;
     cursor: help;
   }
+
+  /* Custom styled hover tooltip: add data-tip="…" + class="tip" to any
+     inline element. Shows a dark popup above on hover — no JS needed. */
+  .tip {
+    position: relative;
+    cursor: help;
+    text-decoration: underline dotted var(--mut);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+  }
+  .tip::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 8px);
+    transform: translateX(-50%);
+    background: #141414;
+    color: #d6d6d6;
+    border: 1px solid #363636;
+    border-radius: 5px;
+    padding: .5rem .75rem;
+    font-size: .78rem;
+    font-style: normal;
+    font-weight: normal;
+    line-height: 1.45;
+    white-space: normal;
+    max-width: 270px;
+    min-width: 160px;
+    width: max-content;
+    text-align: left;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .18s;
+    z-index: 300;
+    box-shadow: 0 4px 14px rgba(0,0,0,.6);
+  }
+  .tip:hover::after { opacity: 1; }
 
   /* Favourites storage badge: same micro-cap typography as .status.ok,
      no chip background — matches "RUNNING" / "INSTALLED" elsewhere. */
@@ -356,6 +389,18 @@
      button+input floats in the middle of whatever height the tallest
      sibling forces. */
   #play-card { display: flex; flex-direction: column; justify-content: center; }
+  /* 52ch = one full "acestream://[40-hex]" URL — the most demanding input
+     the field ever receives. The input will not shrink below this, so the
+     save button is naturally forced to its own flex line whenever the row
+     is too narrow to display the content ID unclipped. No px breakpoint
+     needed — the wrap is driven by content width. */
+  #cid-input { min-width: 52ch; }
+  /* Don't let the save button shrink: when there isn't enough horizontal
+     room for both the full-width input and this button, the button wraps.
+     margin auto then centres it on its solo line in single-column mode. */
+  @media (max-width: 1149px) {
+    #save-btn { flex-shrink: 0; margin-left: auto; margin-right: auto; }
+  }
 
   /* Corner label: a small "fieldset legend"-style tag in the top-left
      of a card. Sits half-overlapping the card border so it reads as a
@@ -427,13 +472,15 @@
        app.js when isWslMode is true. */
     .top-row.top-row-solo { grid-template-columns: 1fr; }
   }
-  @media (min-width: 1260px) {
+  @media (min-width: 960px) {
     body { max-width: 1700px; }
+  }
+  @media (min-width: 1150px) {
     /* Wide-screen layout: favourites get their own left column spanning
        every row of the right side (top-row → search → play → setup),
        and stick in view as the user scrolls through the longer
        right-hand column. */
-    .main { grid-template-columns: minmax(360px, 1fr) 2fr;
+    .main { grid-template-columns: minmax(300px, 1fr) 2fr;
             grid-template-areas:
               "favs play"
               "favs top-row"
@@ -460,20 +507,29 @@
                     border: 1px solid var(--acc); border-radius: 3px; }
 
   /* Setup & tools card: structured rows + danger zone */
-  .setup-row { padding: .6rem 0; border-top: 1px solid #222; }
+  .setup-row { padding: .6rem 0; border-top: 1px solid #333; }
   .setup-row:first-of-type { border-top: none; padding-top: .4rem; }
   /* Engine image / App launcher / Lifecycle go side-by-side on wide
      screens; stack on narrow. Inside the grid the horizontal dividers
      would be visual noise — the columns separate the rows already.
      Subtle vertical separators on wide screens stand in for them. */
   .setup-grid { display: grid; gap: .6rem 1.2rem; grid-template-columns: 1fr; }
-  .setup-grid .setup-row { border-top: none; padding-top: .4rem; }
-  @media (min-width: 900px) {
+  .setup-grid .setup-row { padding-top: .4rem; }
+  @media (min-width: 720px) {
     .setup-grid { grid-template-columns: 1fr 1fr 1fr; align-items: start; }
-    .setup-grid .setup-row + .setup-row { border-left: 1px solid #222; padding-left: 1.2rem; }
+    /* In 3-column mode the columns act as separators — horizontal
+       dividers are visual noise. In single-column they stay visible. */
+    .setup-grid .setup-row { border-top: none; }
+    .setup-grid .setup-row + .setup-row { border-left: 1px solid #333; padding-left: 1.2rem; }
+    /* GPU card spans the full grid width; reset the left-border that the
+       sibling rule above would otherwise apply. */
+    #gpu-card { grid-column: 1 / -1; border-left: none; border-top: 1px solid #333; padding-left: 0; }
+    #gpu-controls .field { justify-content: flex-start; }
   }
+  /* Center GPU controls on narrow screens */
+  #gpu-controls .field { justify-content: center; }
   .setup-row-head { display: flex; justify-content: space-between;
-                    align-items: center; margin-bottom: .35rem; }
+                    align-items: center; margin-bottom: .35rem; white-space: nowrap; }
   .danger-zone { border-top: 1px dashed #553; margin-top: .6rem; }
 
   /* Logs as tabs: three buttons across the top, a single full-width
@@ -481,7 +537,7 @@
      active tab closes the viewer; clicking a different tab switches
      the stream without closing. */
   .logs-tabs { display: grid; gap: .5rem; grid-template-columns: 1fr; }
-  @media (min-width: 900px) {
+  @media (min-width: 720px) {
     .logs-tabs { grid-template-columns: 1fr 1fr 1fr; }
   }
   .logs-tab {
@@ -501,13 +557,15 @@
      mustard active state. */
   .logs-toggle {
     display: none;
-    font-size: .85rem; line-height: 1;
-    padding: 0 .35rem;
+    font-size: .85rem;
+    padding: .1rem .35rem;
     color: #ddd;
     border: 1px solid #444; border-radius: 3px;
     background: #1a1a1a;
+    align-items: center; justify-content: center;
+    line-height: 1;
   }
-  .logs-tab.active .logs-toggle { display: inline-block; }
+  .logs-tab.active .logs-toggle { display: inline-flex; }
   .logs-toggle:hover { border-color: var(--hover); }
   #logs-viewer {
     background: #0a0a0a; color: #bbb;
@@ -515,6 +573,22 @@
     font: .72rem ui-monospace, monospace;
     max-height: 24em; overflow: auto;
     white-space: pre-wrap; word-break: break-all;
+  }
+  /* Sticky banner shown when the viewer is auto-paused by a click inside it. */
+  #logs-viewer.viewer-paused::before {
+    content: "⏸  Paused — click outside to resume";
+    display: block;
+    position: sticky;
+    top: 0;
+    background: rgba(50,40,8,.95);
+    color: var(--acc);
+    font: .72rem system-ui, sans-serif;
+    text-align: center;
+    padding: .2rem .4rem;
+    margin-bottom: .45rem;
+    border-radius: 3px;
+    border: 1px solid rgba(181,146,56,.3);
+    letter-spacing: .02em;
   }
   .image-tag { font-family: ui-monospace, monospace; font-size: .75rem;
                color: var(--mut); margin-left: .35rem; }
@@ -569,5 +643,17 @@
   /* Search + pagination */
   #fav-search { font-size: .9rem; }
   .pager { display: flex; justify-content: space-between; align-items: center;
-           font-size: .8rem; margin-top: .5rem; }
+           font-size: .8rem; margin-top: .5rem; margin-bottom: .3rem; }
   .pager button { padding: .25rem .6rem; font-size: .85rem; }
+
+  /* Debug overlay: type d-b-g outside any input to show viewport info. */
+  #dbg-overlay {
+    position: fixed; top: 1rem; right: 1rem;
+    background: rgba(10,10,10,.92); color: #eee;
+    border: 1px solid #555; border-radius: 6px;
+    padding: .55rem 1rem;
+    font: 600 1rem ui-monospace, monospace;
+    z-index: 9999; pointer-events: none;
+    opacity: 0; transition: opacity .15s;
+  }
+  #dbg-overlay.visible { opacity: 1; }

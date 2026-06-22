@@ -140,7 +140,9 @@ function renderFavs() {
   for (const f of p.slice(filtered)) list.appendChild(renderFavRow(f));
 
   $('fav-empty').style.display = allFavs.length === 0 ? 'block' : 'none';
-  $('fav-pager').style.display = filtered.length > FAV_PAGE_SIZE ? '' : 'none';
+  // Pager lives at the top; show whenever there are any favourites so its
+  // position never shifts, even on a single page (buttons are just disabled).
+  $('fav-pager').style.display = allFavs.length === 0 ? 'none' : '';
   $('fav-prev').disabled = !p.hasPrev;
   $('fav-next').disabled = !p.hasNext;
   $('fav-info').textContent = p.isEmpty
@@ -567,12 +569,14 @@ async function initGpuCard() {
 
   $('gpu-controls').style.display = '';
 
-  // Label the detected backend.
+  // Show detected backend as a green status chip at the end of the controls row.
   const backendLabel = $('gpu-backend-label');
   if (caps.nvidia) {
-    backendLabel.textContent = 'NVIDIA — ' + caps.nvidia.name;
+    backendLabel.textContent = 'NVIDIA';
+    backendLabel.className = 'status ok';
   } else if (caps.vaapi) {
-    backendLabel.textContent = caps.qsv ? 'Intel QSV (VA-API)' : 'VA-API';
+    backendLabel.textContent = caps.qsv ? 'QSV' : 'VA-API';
+    backendLabel.className = 'status ok';
   }
 
   // VA-API: if h264_enc is false, vainfo is missing or the driver doesn't
@@ -586,6 +590,10 @@ async function initGpuCard() {
       'GPU encode unavailable — install libva-utils + mesa-va-drivers and confirm ' +
       'vainfo shows VAEntrypointEncSlice for H.264.';
   }
+
+  // Wrap the upscale select with the same custom widget used for
+  // Play-in so it matches the UI theme instead of the OS native picker.
+  mountAcemanSelect($('gpu-upscale'));
 
   // Restore saved settings.
   const s = _loadGpuSettings();
@@ -766,10 +774,18 @@ function startInBrowserPlayback(cid) {
     const base = mediaInfoText || 'Playing';
     const ahead = bufferedAhead(v.buffered, v.currentTime);
     const mbps = speedMbps != null ? ' · ' + speedMbps.toFixed(1) + ' Mbps' : '';
-    const fps  = currentFps != null ? ' · ' + Math.round(currentFps) + ' fps' : '';
     const res  = v.videoWidth  ? ' · ' + v.videoWidth + '×' + v.videoHeight : '';
-    status.textContent = base + ' · buffer ' + ahead.toFixed(1) + ' s' + mbps + fps + res + ' · ' + encodeLabel;
+    status.textContent = base + ' · buffer ' + ahead.toFixed(1) + ' s' + mbps + res + ' · ' + encodeLabel;
     status.className = 'gate-hint';
+    const fpsBadge = $('fps-badge');
+    if (fpsBadge) {
+      if (currentFps != null) {
+        fpsBadge.textContent = Math.round(currentFps) + ' fps';
+        fpsBadge.style.display = '';
+      } else {
+        fpsBadge.style.display = 'none';
+      }
+    }
   };
   const beginPlayback = () => {
     startPlay();
@@ -897,6 +913,8 @@ function stopInBrowserPlayback() {
     v.controls = true;
   }
   if (status) { status.textContent = ''; status.className = 'gate-hint'; }
+  const fpsBadge = $('fps-badge');
+  if (fpsBadge) { fpsBadge.textContent = ''; fpsBadge.style.display = 'none'; }
   // Nothing is playing in this tab anymore — pull the Move button.
   if (livePlaybackTarget === 'browser') {
     livePlaybackTarget = '';
@@ -2152,25 +2170,25 @@ async function toggleDesktopEntry() {
     const badge = describeFavouritesStorageBadge(mode, cfg.favorites_path);
     $('storage-badge').textContent = badge.text;
     $('storage-badge').title = badge.title;
-    // Hide Linux-desktop-only affordances when the server told us
-    // this session is being served to a Windows-side browser.
-    // Also hide the Player card — every option in it (system VLC, mpv,
-    // Linux browsers, in-tab proxy targeting localhost) assumes the
-    // browser runs on the same machine as the engine. From a Windows
-    // browser it'd just be confusing UI for things that can't work.
+    // Hide Linux-desktop-only affordances when served to a Windows-side browser.
     isWslMode = !!cfg.is_wsl;
     if (isWslMode) {
-      const row = $('desktop-row');
-      if (row) row.style.display = 'none';
-      const card = $('player-card');
-      if (card) card.style.display = 'none';
-      // Engine is alone in the top row now — collapse the 2-column
-      // grid to 1fr so it spans the row instead of sitting in the
-      // left slot with empty space next to it. Marker class so the
-      // override only kicks in when the Player card is actually
-      // hidden, not whenever the page is narrow.
-      const topRow = document.querySelector('.top-row');
-      if (topRow) topRow.classList.add('top-row-solo');
+      // App launcher row: no xdg-mime or .desktop on Windows
+      const desktopRow = $('desktop-row');
+      if (desktopRow) desktopRow.style.display = 'none';
+      // Player / browser selector: Linux-side targets aren't reachable
+      // from the Windows browser. Hide the selection UI but keep the
+      // buffer slider — in WSL you're always playing in-browser so it's
+      // the most relevant control on the card.
+      const playerSelectRow = $('player-select-row');
+      if (playerSelectRow) playerSelectRow.style.display = 'none';
+      const showAllRow = $('show-all-row');
+      if (showAllRow) showAllRow.style.display = 'none';
+      const playerHint = $('player-hint');
+      if (playerHint) playerHint.style.display = 'none';
+      // Rename card label to reflect the remaining content
+      const playerLabel = document.querySelector('#player-card .card-label');
+      if (playerLabel) playerLabel.textContent = 'Playback';
     }
   } catch (e) {
     showError('Could not contact backend: ' + e.message);
@@ -2427,6 +2445,10 @@ async function toggleDesktopEntry() {
   // switching away resets the flag (a freshly-opened tab always
   // resumes auto-refresh by default).
   let activeLogsPaused = false;
+  // Set when the user clicks inside the viewer to select text; cleared
+  // on mousedown outside. Separate from activeLogsPaused so the ⏸
+  // button continues to work as an explicit override.
+  let logsViewerAutoPaused = false;
   const logsViewer = $('logs-viewer');
   const logsTabs = Array.from(document.querySelectorAll('.logs-tab'));
 
@@ -2481,6 +2503,8 @@ async function toggleDesktopEntry() {
     if (logsTimer) { clearInterval(logsTimer); logsTimer = null; }
     activeLogsKind = kind;
     activeLogsPaused = false;
+    logsViewerAutoPaused = false;
+    logsViewer.classList.remove('viewer-paused');
     for (const t of logsTabs) t.classList.toggle('active', t.dataset.kind === kind);
     setToggleGlyph(findTab(kind), false);
     logsViewer.style.display = '';
@@ -2495,6 +2519,8 @@ async function toggleDesktopEntry() {
     if (logsTimer) { clearInterval(logsTimer); logsTimer = null; }
     activeLogsKind = null;
     activeLogsPaused = false;
+    logsViewerAutoPaused = false;
+    logsViewer.classList.remove('viewer-paused');
     for (const t of logsTabs) t.classList.remove('active');
     logsViewer.style.display = 'none';
   }
@@ -2502,6 +2528,10 @@ async function toggleDesktopEntry() {
   function toggleActiveLogsPaused() {
     if (!activeLogsKind) return;
     activeLogsPaused = !activeLogsPaused;
+    if (!activeLogsPaused) {
+      logsViewerAutoPaused = false;
+      logsViewer.classList.remove('viewer-paused');
+    }
     setToggleGlyph(findTab(activeLogsKind), activeLogsPaused);
     if (activeLogsPaused) {
       if (logsTimer) { clearInterval(logsTimer); logsTimer = null; }
@@ -2528,6 +2558,26 @@ async function toggleDesktopEntry() {
     });
     updateLogsStatus(tab.dataset.kind);
   }
+
+  // Auto-pause scroll when the user clicks inside the log viewer so
+  // they can select text without the refresh clobbering the selection.
+  logsViewer.addEventListener('mousedown', () => {
+    if (!activeLogsKind || activeLogsPaused) return;
+    logsViewerAutoPaused = true;
+    logsViewer.classList.add('viewer-paused');
+    toggleActiveLogsPaused();
+  });
+
+  // Resume as soon as the user clicks outside the viewer (but not on
+  // the ⏸ toggle — that button handles itself via the tab click handler).
+  document.addEventListener('mousedown', (e) => {
+    if (!logsViewerAutoPaused) return;
+    if (logsViewer.contains(e.target)) return;
+    if (e.target.closest('[data-role="logs-toggle"]')) return;
+    logsViewerAutoPaused = false;
+    logsViewer.classList.remove('viewer-paused');
+    if (activeLogsPaused) toggleActiveLogsPaused();
+  });
 
   $('factory-reset').onclick = openResetModal;
   $('reset-cancel').onclick = closeResetModal;
@@ -2601,3 +2651,34 @@ async function toggleDesktopEntry() {
     }
   }
 })();
+
+// Debug telemetry: type d → b → g (outside any input) to show a
+// 3-second viewport-size overlay. Useful for reporting layout issues.
+(function () {
+  const SEQ = 'dbg';
+  let buf = '', timer = null, hideTimer = null;
+  document.addEventListener('keydown', (e) => {
+    const tag = document.activeElement && document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    clearTimeout(timer);
+    buf += e.key.toLowerCase();
+    buf = buf.slice(-SEQ.length);
+    if (buf === SEQ) {
+      buf = '';
+      const el = document.getElementById('dbg-overlay');
+      if (!el) return;
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const bw = document.body.clientWidth;
+      const dpr = window.devicePixelRatio || 1;
+      const text = `${vw} x ${vh}px  body ${bw}px  DPR ${dpr}`;
+      el.innerHTML =
+        `${vw} &times; ${vh}px &nbsp;&#183;&nbsp; body&nbsp;${bw}px &nbsp;&#183;&nbsp; DPR&nbsp;${dpr}`;
+      el.classList.add('visible');
+      clearTimeout(hideTimer);
+      navigator.clipboard.writeText(text).catch(() => {});
+      hideTimer = setTimeout(() => el.classList.remove('visible'), 3000);
+      return;
+    }
+    timer = setTimeout(() => { buf = ''; }, 1500);
+  });
+}());

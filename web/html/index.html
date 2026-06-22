@@ -164,7 +164,7 @@
       <input type="search" id="cid-input"
              placeholder="Channel name, acestream://, or 40-hex content id"
              autocomplete="off" autocorrect="off" spellcheck="false"
-             autofocus style="min-width: 14rem">
+             autofocus>
       <button id="cid-clear" class="icon-btn"
               title="Clear input" aria-label="Clear input"
               style="display:none">✕</button>
@@ -189,6 +189,7 @@
       <video id="pb-video" controls playsinline
              style="display:none; width:100%; max-height:55vh; background:#000; margin:.5rem 0"></video>
       <div class="row" style="justify-content: flex-end; gap: .5rem; flex-wrap: wrap">
+        <span id="fps-badge" class="status" style="display:none"></span>
         <div class="gate-hint" id="pb-video-status" style="margin: 0; flex-shrink: 0"></div>
       </div>
     </div>
@@ -199,29 +200,28 @@
     <div class="row">
       <input type="text" id="fav-search" placeholder="Search…">
     </div>
-    <div id="fav-list"></div>
-    <div id="fav-empty" class="status" style="display:none">
-      No favourites yet — play something and click "Save as favourite".
-    </div>
-    <div class="pager" id="fav-pager">
+    <div class="pager" id="fav-pager" style="display:none">
       <button id="fav-prev">‹ Prev</button>
       <span class="status" id="fav-info"></span>
       <button id="fav-next">Next ›</button>
+    </div>
+    <div id="fav-list"></div>
+    <div id="fav-empty" class="status" style="display:none">
+      No favourites yet — play something and click "Save as favourite".
     </div>
   </div>
 
   <div class="top-row" id="top-row">
     <div class="card has-card-label" id="player-card">
       <span class="card-label">Player</span>
-      <div class="field">
+      <div class="field" id="player-select-row">
         <span class="field-label">Play in</span>
         <select id="playback-target" disabled><option>…</option></select>
         <button id="playback-move" style="display:none">Move current stream here</button>
       </div>
-      <div class="field" style="justify-content: center">
-        <label style="font-size:.78rem; color:var(--mut)"
-               title="By default we hide browser entries that look like the one you're already in, since the browser's UA string can't distinguish, e.g., system Firefox from Flatpak Firefox. Turn this on to see every detected install — useful only when you specifically want to switch between two installs of the same browser.">
-          <input type="checkbox" id="show-all-browsers"> Show all browser installs
+      <div class="field" id="show-all-row" style="justify-content: center">
+        <label>
+          <input type="checkbox" id="show-all-browsers"> <span class="tip" data-tip="By default we hide browser entries that look like the one you're already in, since the browser's UA string can't distinguish, e.g., system Firefox from Flatpak Firefox. Turn this on to see every detected install — useful only when you specifically want to switch between two installs of the same browser.">Show all browser installs</span>
         </label>
       </div>
       <div class="field" id="buffer-field"
@@ -230,7 +230,7 @@
         <input type="range" id="playback-buffer" min="0" max="60" step="1" value="0"
                style="flex:1; min-width:0">
         <output id="playback-buffer-out"
-                style="font-size:.78rem; color:var(--mut); min-width:4ch; text-align:right">Off</output>
+                style="min-width:4ch; text-align:right">Off</output>
       </div>
       <div class="gate-hint" id="player-hint"></div>
     </div>
@@ -252,11 +252,11 @@
 
       <div class="setup-grid">
         <div class="setup-row">
-          <div class="setup-row-head">
+          <div class="setup-row-head" style="justify-content:center;gap:.5rem">
             <span class="has-tooltip" id="image-label">Engine image</span>
             <span class="status" id="image-status">…</span>
           </div>
-          <div class="row">
+          <div class="row" style="justify-content:center">
             <button id="image-install" disabled title="Build (or rebuild) the local container image the engine runs in. Pulls base layers from the registry; takes a couple of minutes the first time.">…</button>
             <button id="image-uninstall" disabled class="danger-outline" title="Remove the local engine image. Any running container is stopped first.">Uninstall</button>
             <span class="status" id="image-hint" style="display:none"></span>
@@ -269,66 +269,51 @@
         </div>
 
         <div class="setup-row" id="desktop-row">
-          <div class="setup-row-head">
+          <div class="setup-row-head" style="justify-content:center;gap:.5rem">
             <span class="has-tooltip" id="desktop-label">App launcher</span>
             <span class="status" id="desktop-status">…</span>
           </div>
-          <div class="row">
+          <div class="row" style="justify-content:center">
             <button id="desktop-toggle" disabled title="Add (or remove) the aceman entry in your application launcher and optionally register it as the handler for acestream:// links.">…</button>
           </div>
           <span id="desktop-path" style="display:none"></span>
         </div>
 
         <div class="setup-row">
-          <div class="setup-row-head">
-            <span>Lifecycle</span>
+          <div class="setup-row-head" style="justify-content:center">
+            <span class="tip" data-tip="Controls the server components. Restart brings everything back up after a crash or settings change. Quit stops all containers and the broker — close the browser tab afterwards.">Lifecycle</span>
           </div>
-          <div class="row">
+          <div class="row" style="justify-content:center">
             <button id="server-restart" title="Re-spawn the aceman web frontend and the host broker. The engine container is podman-restarted alongside. Any active player is closed first. The browser tab reloads itself when the new instance comes up.">Restart</button>
             <button id="server-shutdown" title="Stop everything: close the active external player (if any), stop the engine container, terminate the host broker, and shut down the web frontend. The browser tab will display a 'stopped' notice — you can then close it.">Quit</button>
           </div>
         </div>
 
         <div class="setup-row" id="gpu-card" style="display:none">
-          <div class="setup-row-head">
-            <span>GPU Acceleration</span>
+          <div class="setup-row-head" style="justify-content:center">
+            <span class="tip" data-tip="In-browser player only. Requires GPU device passthrough to the web container.">GPU Acceleration</span>
           </div>
-          <p style="font-size:.82rem;color:var(--mut);margin:.1rem 0 .7rem">
-            In-browser player only. Requires GPU device passthrough to the web container.
-          </p>
           <div id="gpu-unavailable" style="display:none">
             <span class="gate-hint">No compatible GPU detected — nvidia-smi and VA-API both absent.</span>
           </div>
           <div id="gpu-controls" style="display:none">
-            <div class="field">
-              <span class="field-label">Backend</span>
-              <span id="gpu-backend-label" class="status"></span>
-            </div>
-            <div class="field">
-              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer"
-                     title="The GPU compresses the video instead of the CPU. CPU stays cooler and freer for other tasks. Quality is the same. Leave this on unless you see problems.">
+            <div class="field" style="gap:1.2rem;flex-wrap:wrap;justify-content:center">
+              <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer">
                 <input type="checkbox" id="gpu-encode">
-                GPU encode
-                <span style="color:var(--mut);font-size:.8rem">(less CPU heat, same quality)</span>
+                <span class="tip" data-tip="The GPU compresses the video instead of the CPU. CPU stays cooler and freer for other tasks. Quality is the same. Leave this on unless you see problems.">GPU encode</span>
               </label>
-            </div>
-            <div class="field">
-              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer"
-                     title="Live TV is often recorded in interlaced format — two half-frames stitched together — which looks like horizontal combing on fast motion. This filter merges them into a clean full frame. Only needed for traditional broadcast channels; most streams don't need it.">
+              <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer">
                 <input type="checkbox" id="gpu-deinterlace">
-                Deinterlace
-                <span style="color:var(--mut);font-size:.8rem">(fixes combing on broadcast TV)</span>
+                <span class="tip" data-tip="Live TV is often recorded in interlaced format — two half-frames stitched together — which looks like horizontal combing on fast motion. This filter merges them into a clean full frame. Only needed for traditional broadcast channels; most streams don't need it.">Deinterlace</span>
               </label>
-            </div>
-            <div class="field">
-              <span class="field-label"
-                    title="The source stream is usually 1080p. If your screen is 4K, the browser would normally stretch that 1080p image to fill the screen, which looks blurry. Turning this on makes the GPU do that stretching before sending it to your browser — the result looks sharper. Needs GPU encode on. Uses more GPU and slows buffering on weak hardware.">Upscale to</span>
-              <select id="gpu-upscale"
-                      title="Off = browser stretches the image (fast, blurry on 4K). 1080p / 4K = GPU upscales before sending (sharper, uses more resources).">
+              <span class="tip"
+                    data-tip="The source stream is usually 1080p. If your screen is 4K, the browser would normally stretch that 1080p image to fill the screen, which looks blurry. Turning this on makes the GPU do that stretching before sending it to your browser — the result looks sharper. Uses more GPU and slows buffering on weak hardware.">Upscale to</span>
+              <select id="gpu-upscale">
                 <option value="">Off — browser scales</option>
                 <option value="1080">1080p</option>
                 <option value="2160">4K (needs strong GPU)</option>
               </select>
+              <span style="white-space:nowrap">Backend: <span id="gpu-backend-label" class="status"></span></span>
             </div>
           </div>
           <div class="gate-hint" id="gpu-hint" style="margin-top:.3rem"></div>
@@ -371,5 +356,6 @@
 <script>
 //__ACEMAN_JS_HERE__
 </script>
+<div id="dbg-overlay"></div>
 </body>
 </html>
