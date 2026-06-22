@@ -25,6 +25,7 @@ def register_all(router: Router) -> None:
         players,
         search,
         storage_mode,
+        web_routes,
     )
     browsers.register(router)
     config_routes.register(router)
@@ -37,6 +38,7 @@ def register_all(router: Router) -> None:
     players.register(router)
     search.register(router)
     storage_mode.register(router)
+    web_routes.register(router)
     # NOTE: /api/player/stop, /api/open-in-browser, /api/stream/proxy,
     # /api/engine/image (POST/DELETE), /api/restart, /api/shutdown,
     # /api/factory-reset, and the static / index routes all still live

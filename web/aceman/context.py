@@ -28,6 +28,7 @@ from .broker_client import (
     GpuBrokerClient,
     ImageBrokerClient,
     PlayersBrokerClient,
+    WebBrokerClient,
 )
 from .favourites import Config, FavStore
 from .heartbeat import HeartbeatTracker
@@ -48,6 +49,7 @@ class RouteContext:
     players_client: Optional[PlayersBrokerClient] = None
     browsers_client: Optional[BrowsersBrokerClient] = None
     desktop_entry: Optional[DesktopBrokerClient] = None
+    web_client: Optional[WebBrokerClient] = None
     search_proxy: Optional[SearchProxy] = None
     heartbeat: HeartbeatTracker = field(default_factory=HeartbeatTracker)
     # True when the launcher was invoked with `aceman_web --wsl` (or

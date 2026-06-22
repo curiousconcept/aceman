@@ -14,10 +14,11 @@ from .image import ImageBrokerClient
 from .players import PlayersBrokerClient
 from .browsers import BrowsersBrokerClient
 from .desktop import DesktopBrokerClient
+from .web import WebBrokerClient
 
 __all__ = [
     "BrokerClient", "BrokerError",
     "EngineBrokerClient", "GpuBrokerClient", "ImageBrokerClient",
     "PlayersBrokerClient", "BrowsersBrokerClient",
-    "DesktopBrokerClient",
+    "DesktopBrokerClient", "WebBrokerClient",
 ]

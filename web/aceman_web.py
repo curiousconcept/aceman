@@ -104,6 +104,7 @@ from aceman.broker_client import (
     GpuBrokerClient,
     ImageBrokerClient,
     PlayersBrokerClient,
+    WebBrokerClient,
 )
 from aceman.search import SearchError, _NoRedirectHandler, SearchProxy
 from aceman.favourites import Config, DuplicateCidError, FavStore
@@ -288,6 +289,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     image_mgr: "ImageBrokerClient | None" = None
     players_client: "PlayersBrokerClient | None" = None
     browsers_client: "BrowsersBrokerClient | None" = None
+    web_client: "WebBrokerClient | None" = None
     config_dir: "pathlib.Path | None" = None
     db_path: "pathlib.Path | None" = None
     config_path: "pathlib.Path | None" = None
@@ -1898,6 +1900,7 @@ def main(argv: list[str] | None = None) -> int:
     Handler.image_mgr = ImageBrokerClient(broker)
     Handler.players_client = PlayersBrokerClient(broker)
     Handler.browsers_client = BrowsersBrokerClient(broker)
+    Handler.web_client = WebBrokerClient(broker)
     Handler.db_path = pathlib.Path(args.db)
     Handler.config_path = pathlib.Path(args.config)
     Handler.config_dir = Handler.db_path.parent
@@ -1917,6 +1920,7 @@ def main(argv: list[str] | None = None) -> int:
         image_mgr=Handler.image_mgr,
         players_client=Handler.players_client,
         browsers_client=Handler.browsers_client,
+        web_client=Handler.web_client,
         desktop_entry=Handler.desktop_entry,
         search_proxy=Handler.search_proxy,
         heartbeat=Handler.heartbeat,

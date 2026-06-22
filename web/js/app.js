@@ -2220,6 +2220,40 @@ async function toggleDesktopEntry() {
   refreshEngineStatus();
   setInterval(refreshEngineStatus, 4000);
 
+  // Web-container memory row — poll every 8 s. Hidden when unavailable
+  // (native mode, container not running, broker down).
+  const WEB_MEM_WARN_BYTES = 100 * 1024 * 1024; // 100 MB from limit
+  const _fmtBytes = (b) => {
+    if (b >= 1024 ** 3) return (b / 1024 ** 3).toFixed(2) + ' GiB';
+    if (b >= 1024 ** 2) return (b / 1024 ** 2).toFixed(0) + ' MiB';
+    if (b >= 1024)      return (b / 1024).toFixed(0) + ' KiB';
+    return b + ' B';
+  };
+  const refreshWebMemory = async () => {
+    const row = $('web-mem-row');
+    if (!row) return;
+    try {
+      const d = await (await fetch('/api/web/memory')).json();
+      if (!d.available) { row.style.display = 'none'; return; }
+      const display = $('web-mem-display');
+      const hint    = $('web-mem-hint');
+      if (display) display.textContent = `${_fmtBytes(d.mem_bytes)} / ${_fmtBytes(d.limit_bytes)}`;
+      const nearLimit = d.limit_bytes > 0 &&
+                        (d.limit_bytes - d.mem_bytes) < WEB_MEM_WARN_BYTES;
+      row.classList.toggle('web-mem-warn', nearLimit);
+      if (hint) {
+        hint.textContent = nearLimit ? 'consider ACE_WEB_MEMORY=2g' : '';
+        hint.style.display = nearLimit ? '' : 'none';
+      }
+      row.style.display = 'flex';
+    } catch (_) {
+      const row2 = $('web-mem-row');
+      if (row2) row2.style.display = 'none';
+    }
+  };
+  refreshWebMemory();
+  setInterval(refreshWebMemory, 8000);
+
   // The Play button toggles between ▶ (idle) and ⏹ (something playing
    // — anywhere: this tab, another browser, vlc, mpv). Clicking it in
    // the stop state tears down everything: in-browser proxy if any,
@@ -2320,10 +2354,9 @@ async function toggleDesktopEntry() {
       };
 
       // Hint label to the right of the Max input:
-      //   < 60     → "must be ≥ 60" in red
-      //   = 60     → "(default)" greyed — same range as standard mode
-      //   61–120   → blank
-      //   > 120    → memory nudge in muted text
+      //   < 60  → "must be ≥ 60" in red
+      //   = 60  → "(default)" greyed — same range as standard mode
+      //   > 60  → blank
       const updateLargeHint = (max) => {
         const hint = $('buffer-large-max-hint');
         if (!hint) return;
@@ -2332,9 +2365,6 @@ async function toggleDesktopEntry() {
           hint.style.color = 'var(--err)';
         } else if (max === 60) {
           hint.textContent = '(default)';
-          hint.style.color = 'var(--mut)';
-        } else if (max > 120) {
-          hint.innerHTML = '— consider <code style="font-size:.75rem">ACE_WEB_MEMORY=2g</code>';
           hint.style.color = 'var(--mut)';
         } else {
           hint.textContent = '';
@@ -2411,16 +2441,23 @@ async function toggleDesktopEntry() {
         const step = 5;
         const bufMaxUp = $('buf-max-up');
         const bufMaxDn = $('buf-max-dn');
+        const syncDnBtn = () => {
+          if (bufMaxDn) bufMaxDn.disabled =
+            (parseInt(largeMaxIn.value, 10) || 0) <= 60;
+        };
         if (bufMaxUp) bufMaxUp.onclick = () => {
           const v = Math.min((parseInt(largeMaxIn.value, 10) || 60) + step, 300);
           largeMaxIn.value = String(v);
           largeMaxIn.dispatchEvent(new Event('input'));
+          syncDnBtn();
         };
         if (bufMaxDn) bufMaxDn.onclick = () => {
           const v = Math.max((parseInt(largeMaxIn.value, 10) || 60) - step, 60);
           largeMaxIn.value = String(v);
           largeMaxIn.dispatchEvent(new Event('input'));
+          syncDnBtn();
         };
+        syncDnBtn();
       }
     }
   }

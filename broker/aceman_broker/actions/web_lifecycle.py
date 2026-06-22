@@ -17,8 +17,10 @@ uses to ask "podman restart" us — it can't restart itself.
 
 from __future__ import annotations
 
+import json
 import os
 import pathlib
+import re
 import signal
 import subprocess
 import sys
@@ -204,8 +206,66 @@ def action_web_restart(params: "dict | None" = None) -> dict:
     return {"restarted": True, "container": WEB_NAME, "rebuilt": rebuilt}
 
 
+def _parse_mem_str(s: str) -> int:
+    """'1.5 MiB' / '512 MB' / '2 GiB' → bytes. Returns 0 on parse error."""
+    m = re.match(r'([\d.]+)\s*([KMGT]?i?B)', s.strip(), re.IGNORECASE)
+    if not m:
+        return 0
+    val = float(m.group(1))
+    unit = m.group(2).upper()
+    mult = {
+        'B': 1,
+        'KB': 1000, 'KIB': 1024,
+        'MB': 1000**2, 'MIB': 1024**2,
+        'GB': 1000**3, 'GIB': 1024**3,
+        'TB': 1000**4, 'TIB': 1024**4,
+    }
+    return int(val * mult.get(unit, 1))
+
+
+def action_web_memory(params: "dict | None" = None) -> dict:
+    """Return current and limit memory for the web container.
+
+    Uses ``podman stats --no-stream`` which reads the cgroup counters
+    without attaching a persistent monitor. Returns
+    ``{"available": False}`` when the container is not running (native
+    mode, mid-restart, etc.) so the caller can hide the row silently.
+    """
+    if not container_running_named(WEB_NAME):
+        return {"available": False}
+    try:
+        r = subprocess.run(
+            ["podman", "stats", "--no-stream", "--format", "json", WEB_NAME],
+            capture_output=True, text=True, timeout=6,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return {"available": False}
+    if r.returncode != 0:
+        return {"available": False}
+    try:
+        data = json.loads(r.stdout.strip())
+        # podman may return a top-level list or a single object
+        entry = data[0] if isinstance(data, list) else data
+        mem_usage = (
+            entry.get("MemUsage") or entry.get("mem_usage") or ""
+        )
+        parts = mem_usage.split("/")
+        if len(parts) != 2:
+            return {"available": False}
+        mem_bytes = _parse_mem_str(parts[0])
+        limit_bytes = _parse_mem_str(parts[1])
+    except (json.JSONDecodeError, IndexError, KeyError, ValueError):
+        return {"available": False}
+    return {
+        "available": True,
+        "mem_bytes": mem_bytes,
+        "limit_bytes": limit_bytes,
+    }
+
+
 def register(actions: dict) -> None:
     _register(actions, "broker.shutdown", action_broker_shutdown)
     _register(actions, "broker.respawn", action_broker_respawn)
     _register(actions, "restart.preflight", action_restart_preflight)
     _register(actions, "web.restart", action_web_restart)
+    _register(actions, "web.memory", action_web_memory)

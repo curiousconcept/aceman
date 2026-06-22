@@ -274,11 +274,23 @@
   /* Player card overrides the generic centering so "Play in" and
      "Buffer" share the same left edge (5.5 rem label column).
      show-all-row uses margin-left:auto to sit at the row's right end. */
-  #player-card .field:first-of-type { justify-content: flex-start; }
-  #player-card .field:first-of-type .field-label { min-width: 5.5rem; }
+  #player-card .field:first-of-type { justify-content: flex-start; flex-wrap: nowrap; }
+  #player-card .field:first-of-type .field-label { min-width: 5.5rem; flex-shrink: 0; }
+  #player-card .field:first-of-type select { min-width: 0; flex-shrink: 1; }
+  /* show-all label sits at the right; must not shrink to invisibility */
+  #show-all-row { flex-shrink: 0; }
   /* Thin separator between the player-select row and the buffer row,
      matching the setup-grid row dividers. */
   #player-card #buffer-field { border-top: 1px solid #2a2a2a; padding-top: .4rem; }
+  /* Web-container memory row — subtle by default, turns red when close to limit */
+  #web-mem-row { display: flex; }
+  #web-mem-display { font-variant-numeric: tabular-nums; }
+  .web-mem-warn { color: var(--err) !important; }
+  @keyframes mem-glow {
+    0%, 100% { text-shadow: 0 0 4px rgba(220,60,60,.35); }
+    50%       { text-shadow: 0 0 9px rgba(220,60,60,.75); }
+  }
+  .web-mem-warn #web-mem-display { animation: mem-glow 1.6s ease-in-out infinite; }
   .row { display: flex; gap: .5rem; align-items: center; margin: .5rem 0; }
   .row input { flex: 1; }
   .card { border: 1px solid #333; border-radius: 6px; padding: .75rem 1rem; margin: 1rem 0;
@@ -595,7 +607,7 @@
   .logs-toggle {
     display: none;
     font-size: .85rem;
-    padding: .1rem .35rem;
+    height: 1.6rem; padding: 0 .35rem;
     color: #ddd;
     border: 1px solid #444; border-radius: 3px;
     background: #1a1a1a;
