@@ -413,15 +413,14 @@
      the checkbox + button rows float in the middle of whatever height
      the tallest sibling (playback card) forces. */
   #engine-card { display: flex; flex-direction: column; justify-content: center; }
-  /* cid-wrap is a fixed-size unit: input (40ch) + clear button.
-     The whole play row is centered so the block floats in the middle
-     of the card at any width. */
-  .cid-wrap { display: flex; align-items: center; flex: 0 0 auto; }
-  #cid-input { width: 40ch; flex: 0 0 auto; padding-top: .3rem; padding-bottom: .3rem; }
-  /* save-btn-row takes a full flex line so the button below it never
-     competes with the play buttons + input for width. The button itself
-     stays at natural (content) width and is centered inside the row. */
-  #save-btn-row { flex-basis: 100%; display: flex; justify-content: center; }
+  /* Outer wrap: save-btn sits to the right when there's room, wraps centred below if not. */
+  #play-row-wrap { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: .5rem; margin: .5rem 0; }
+  /* play-row is nowrap internally; parent handles vertical margin. */
+  .play-row { flex-wrap: nowrap; justify-content: center; margin: 0; }
+  #cid-input { width: 39ch; max-width: 39ch; flex: 0 1 auto; min-width: 12ch; padding-top: .3rem; padding-bottom: .3rem; }
+  /* Symmetric small padding keeps glyphs centred while staying visually tight. */
+  #cid-clear    { padding: .3rem .15rem; }
+  #restream-btn { padding: .3rem .15rem; }
 
   /* Corner label: a small "fieldset legend"-style tag in the top-left
      of a card. Sits half-overlapping the card border so it reads as a
@@ -509,7 +508,7 @@
             align-items: start; }
     #play-card   { grid-area: play; }
     #top-row     { grid-area: top-row; }
-    #favs-card   { grid-area: favs; position: sticky; top: 1rem; }
+    #favs-card   { grid-area: favs; position: sticky; top: 1rem; z-index: 2; }
     #setup-card  { grid-area: setup; }
   }
 
@@ -518,12 +517,26 @@
          padding: .35rem .25rem; border-radius: 3px;
          border: 1px solid transparent;
          box-shadow: 0 1px 0 #222;        /* row separator via shadow, frees border for glow */
-         transition: border-color .15s, box-shadow .15s; }
+         transition: border-color .15s, box-shadow .15s, background .1s; }
+  .fav:hover { background: var(--hover); }
+  .fav:hover .fav-name,
+  .fav:hover .fav-last,
+  .fav:hover .fav-menu-btn { color: #000; opacity: 1; font-weight: 600; }
   .fav:last-child { box-shadow: none; }
+  /* Rows centred as a block; text left-aligns within each row. */
+  #fav-list { display: flex; flex-direction: column; align-items: center; }
+  .fav { width: min(100%, 28rem); }
   .fav-name-wrap { flex: 1; min-width: 0; display: flex; align-items: baseline;
                    gap: .5rem; cursor: pointer; }
-  .fav-name-wrap:hover .fav-name { color: var(--acc); }
   .fav-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* ⋮ context menu */
+  .fav-menu-wrap { position: relative; flex-shrink: 0; }
+  .fav-menu-btn { padding: .2rem .3rem; color: var(--mut); opacity: .4; line-height: 1; }
+  .fav:hover .fav-menu-btn { opacity: 1; }
+  .fav-menu { position: absolute; right: 0; top: calc(100% + 2px); min-width: 8rem; z-index: 100; }
+  .fav-menu-sep { border-top: 1px solid #333; margin: .25rem 0; }
+  .fav-menu-delete { color: #c0392b; }
+  .fav-menu-delete.focused, .fav-menu-delete:hover { background: #c0392b !important; color: #fff; }
   @keyframes fav-glow {
     0%   { border-color: transparent; }
     25%  { border-color: var(--hover); box-shadow: 0 0 6px rgba(181,146,56,.5); }

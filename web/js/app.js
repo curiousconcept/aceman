@@ -114,6 +114,11 @@ let favSearch = '';
 let favPage = 0;
 const FAV_PAGE_SIZE = 10;
 
+function closeFavMenus() {
+  document.querySelectorAll('.fav-menu').forEach(m => { m.hidden = true; });
+}
+document.addEventListener('click', closeFavMenus);
+
 async function loadFavs() {
   allFavs = (mode === 'sqlite') ? await api('/api/favs') : browserFavs.list();
   renderFavs();
@@ -160,8 +165,7 @@ function renderFavRow(f) {
   const name = document.createElement('span');
   name.className = 'fav-name';
   name.textContent = f.name;
-  name.title = `${f.cid}\nDouble-click to rename`;
-  name.ondblclick = () => startEditName(f, name);
+  name.title = f.cid;
 
   const last = document.createElement('span');
   last.className = 'fav-last';
@@ -176,33 +180,54 @@ function renderFavRow(f) {
     showBusy('Starting…');
     try { await play({ name: f.name }); } finally {
       hideBusy();
-      // glow fades via animation; remove class after it completes
       setTimeout(() => row.classList.remove('fav-playing'), 1200);
     }
   };
 
-  name.onclick = triggerPlay;
+  wrap.onclick = triggerPlay;
 
-  const playBtn = document.createElement('button');
-  // U+25B6 BLACK RIGHT-POINTING TRIANGLE — universal "play" glyph,
-  // unicode-only so we don't have to ship an SVG / icon font.
-  playBtn.textContent = '▶';
-  playBtn.title = 'Play';
-  playBtn.setAttribute('aria-label', 'Play');
-  playBtn.classList.add('icon-btn');
-  playBtn.onclick = triggerPlay;
+  // ⋮ context menu — Rename / Delete
+  const menuWrap = document.createElement('div');
+  menuWrap.className = 'fav-menu-wrap';
 
-  const delBtn = document.createElement('button');
-  // U+1F5D1 WASTEBASKET — universal "delete" glyph, unicode-only.
-  delBtn.textContent = '🗑';
-  delBtn.title = 'Delete';
-  delBtn.setAttribute('aria-label', 'Delete');
-  delBtn.classList.add('icon-btn');
-  delBtn.onclick = () => deleteFav(f.name);
+  const menuBtn = document.createElement('button');
+  menuBtn.className = 'icon-btn fav-menu-btn';
+  menuBtn.textContent = '⋮';
+  menuBtn.title = 'More options';
+  menuBtn.setAttribute('aria-label', 'More options');
+
+  const menu = document.createElement('div');
+  menu.className = 'aceman-select-listbox fav-menu';
+  menu.hidden = true;
+
+  const optRename = document.createElement('div');
+  optRename.className = 'aceman-select-option';
+  optRename.textContent = 'Rename';
+  optRename.onclick = e => { e.stopPropagation(); menu.hidden = true; startEditName(f, name); };
+
+  const sep = document.createElement('div');
+  sep.className = 'fav-menu-sep';
+
+  const optDelete = document.createElement('div');
+  optDelete.className = 'aceman-select-option fav-menu-delete';
+  optDelete.textContent = 'Delete';
+  optDelete.onclick = e => { e.stopPropagation(); menu.hidden = true; deleteFav(f.name); };
+
+  menu.appendChild(optRename);
+  menu.appendChild(sep);
+  menu.appendChild(optDelete);
+  menuWrap.appendChild(menuBtn);
+  menuWrap.appendChild(menu);
+
+  menuBtn.onclick = e => {
+    e.stopPropagation();
+    const wasHidden = menu.hidden;
+    closeFavMenus();
+    menu.hidden = !wasHidden;
+  };
 
   row.appendChild(wrap);
-  row.appendChild(playBtn);
-  row.appendChild(delBtn);
+  row.appendChild(menuWrap);
   return row;
 }
 
@@ -319,15 +344,6 @@ function clearCidInput() {
   if (!input) return;
   input.value = '';
   input.focus();
-  // Drop the last-played stash so a refresh doesn't restore the
-  // cid the user just dismissed, and reset the now-playing card
-  // alongside it — the ✕ is the user explicitly saying "I'm done
-  // with this channel", treat it like a stop+forget.
-  clearLastPlay(localStorage);
-  current = null;
-  setTabTitle('');
-  setNowPlayingName('', '');
-  $('now-playing').style.display = 'none';
   updateSaveButton();
   refreshSearchSection();
   refreshClearButton();

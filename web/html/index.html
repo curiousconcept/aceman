@@ -152,10 +152,9 @@
       <span class="status" id="search-status" style="margin-left:.3rem"></span>
       <span id="playback-live" class="live-dot" style="display:none">live</span>
     </span>
-    <div class="row" style="flex-wrap: wrap; justify-content: center">
-      <button id="play-btn" class="primary icon-btn" title="Play" aria-label="Play">▶</button>
-      <button id="restream-btn" class="icon-btn" title="Restart stream with current settings (keeps the same channel)" aria-label="Restart stream" style="display:none">↺</button>
-      <div class="cid-wrap">
+    <div id="play-row-wrap">
+      <div class="row play-row">
+        <button id="play-btn" class="primary icon-btn" title="Play" aria-label="Play">▶</button>
         <input type="text" id="cid-input"
                placeholder="Channel name, acestream://, or 40-hex id"
                autocomplete="off" autocorrect="off" spellcheck="false"
@@ -163,8 +162,9 @@
         <button id="cid-clear" class="icon-btn"
                 title="Clear input" aria-label="Clear input"
                 style="display:none">✕</button>
+        <button id="restream-btn" class="icon-btn" title="Restart stream with current settings (keeps the same channel)" aria-label="Restart stream" style="display:none">↺</button>
       </div>
-      <div id="save-btn-row"><button id="save-btn" style="display:none">Save as favourite</button></div>
+      <button id="save-btn" style="display:none">Save as favourite</button>
     </div>
     <div class="gate-hint" id="play-hint"></div>
     <div class="err" id="err"></div>
