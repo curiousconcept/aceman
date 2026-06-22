@@ -152,20 +152,12 @@
       <span class="status" id="search-status" style="margin-left:.3rem"></span>
       <span id="playback-live" class="live-dot" style="display:none">live</span>
     </span>
-    <div class="row" style="flex-wrap: wrap">
+    <div class="row" style="flex-wrap: wrap; justify-content: center">
       <button id="play-btn" class="primary icon-btn" title="Play" aria-label="Play">▶</button>
       <button id="restream-btn" class="icon-btn" title="Restart stream with current settings (keeps the same channel)" aria-label="Restart stream" style="display:none">↺</button>
-      <!-- cid-wrap keeps the input and its clear button as one flex unit
-           so they never split across lines when the row wraps. -->
       <div class="cid-wrap">
-        <!-- type="search" still here for the right semantic role, but
-             we hide the native cancel × in CSS and paint our own
-             always-visible button below — Firefox only shows the
-             native one on focus, mobile browsers often skip it
-             entirely, so we can't rely on it for the "I want to
-             search a new channel while one's playing" flow. -->
-        <input type="search" id="cid-input"
-               placeholder="Channel name, acestream://, or 40-hex content id"
+        <input type="text" id="cid-input"
+               placeholder="Channel name, acestream://, or 40-hex id"
                autocomplete="off" autocorrect="off" spellcheck="false"
                autofocus>
         <button id="cid-clear" class="icon-btn"

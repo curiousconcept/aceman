@@ -413,12 +413,11 @@
      the checkbox + button rows float in the middle of whatever height
      the tallest sibling (playback card) forces. */
   #engine-card { display: flex; flex-direction: column; justify-content: center; }
-  /* cid-wrap is a single flex item in the play row that holds the input
-     and the clear button together — they can never split across lines.
-     min-width:0 lets the input shrink so the buttons on either side
-     always share the same row; flex:1 still fills the remaining space. */
-  .cid-wrap { display: flex; align-items: center; flex: 1; min-width: 0; }
-  #cid-input { flex: 1; min-width: 0; padding-top: .3rem; padding-bottom: .3rem; }
+  /* cid-wrap is a fixed-size unit: input (40ch) + clear button.
+     The whole play row is centered so the block floats in the middle
+     of the card at any width. */
+  .cid-wrap { display: flex; align-items: center; flex: 0 0 auto; }
+  #cid-input { width: 40ch; flex: 0 0 auto; padding-top: .3rem; padding-bottom: .3rem; }
   /* save-btn-row takes a full flex line so the button below it never
      competes with the play buttons + input for width. The button itself
      stays at natural (content) width and is centered inside the row. */
