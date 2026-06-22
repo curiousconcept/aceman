@@ -530,6 +530,15 @@
   #gpu-controls .field { justify-content: center; }
   .setup-row-head { display: flex; justify-content: space-between;
                     align-items: center; margin-bottom: .35rem; white-space: nowrap; }
+  /* Large-buffer max input: fixed-width dark number field matching the rest of the UI */
+  #buffer-large-max {
+    width: 5rem; padding: .3rem .45rem; box-sizing: border-box;
+    background: #1a1a1a; color: var(--fg); border: 1px solid #333; border-radius: 4px;
+  }
+  #buffer-large-max:focus {
+    outline: none; border-color: var(--hover);
+    box-shadow: 0 0 0 2px rgba(181,146,56,.22);
+  }
   .danger-zone { border-top: 1px dashed #553; margin-top: .6rem; }
 
   /* Logs as tabs: three buttons across the top, a single full-width

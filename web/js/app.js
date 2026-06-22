@@ -774,18 +774,10 @@ function startInBrowserPlayback(cid) {
     const base = mediaInfoText || 'Playing';
     const ahead = bufferedAhead(v.buffered, v.currentTime);
     const mbps = speedMbps != null ? ' · ' + speedMbps.toFixed(1) + ' Mbps' : '';
+    const fps  = currentFps != null ? ' · ' + Math.round(currentFps) + ' fps' : '';
     const res  = v.videoWidth  ? ' · ' + v.videoWidth + '×' + v.videoHeight : '';
-    status.textContent = base + ' · buffer ' + ahead.toFixed(1) + ' s' + mbps + res + ' · ' + encodeLabel;
+    status.textContent = base + ' · buffer ' + ahead.toFixed(1) + ' s' + mbps + fps + res + ' · ' + encodeLabel;
     status.className = 'gate-hint';
-    const fpsBadge = $('fps-badge');
-    if (fpsBadge) {
-      if (currentFps != null) {
-        fpsBadge.textContent = Math.round(currentFps) + ' fps';
-        fpsBadge.style.display = '';
-      } else {
-        fpsBadge.style.display = 'none';
-      }
-    }
   };
   const beginPlayback = () => {
     startPlay();
@@ -880,12 +872,19 @@ function _preRollBuffer(v, status, target, onRelease) {
   tick();
 }
 
-// Read the Player card's buffer slider (falling back to the persisted
-// value if the control isn't mounted yet), normalised to [0, 60].
+function _effectiveBufMax() {
+  const largeCb = $('buffer-large-cb');
+  const largeMaxIn = $('buffer-large-max');
+  if (!largeCb || !largeCb.checked) return 60;
+  const v = parseInt(largeMaxIn && largeMaxIn.value, 10);
+  return (Number.isFinite(v) && v > 60) ? Math.min(v, 300) : 120;
+}
+
 function getPlaybackBuffer() {
+  const max = _effectiveBufMax();
   const el = $('playback-buffer');
-  if (el) return clampBuffer(el.value);
-  return clampBuffer(localStorage.getItem(KEYS.PLAYBACK_BUFFER));
+  if (el) return clampBuffer(el.value, max);
+  return clampBuffer(localStorage.getItem(KEYS.PLAYBACK_BUFFER), max);
 }
 
 function stopInBrowserPlayback() {
@@ -913,8 +912,6 @@ function stopInBrowserPlayback() {
     v.controls = true;
   }
   if (status) { status.textContent = ''; status.className = 'gate-hint'; }
-  const fpsBadge = $('fps-badge');
-  if (fpsBadge) { fpsBadge.textContent = ''; fpsBadge.style.display = 'none'; }
   // Nothing is playing in this tab anymore — pull the Move button.
   if (livePlaybackTarget === 'browser') {
     livePlaybackTarget = '';
@@ -2299,19 +2296,77 @@ async function toggleDesktopEntry() {
       renderPlaybackTargets();
     };
   }
-  // In-tab pre-roll buffer slider — also a UI-only preference, persisted
-  // to localStorage. 0 = Off (live edge). Read at play time by
-  // startInBrowserPlayback; changes apply to the next Play.
-  const bufSlider = $('playback-buffer');
-  const bufOut = $('playback-buffer-out');
-  if (bufSlider) {
-    bufSlider.value = String(clampBuffer(localStorage.getItem(KEYS.PLAYBACK_BUFFER)));
-    if (bufOut) bufOut.textContent = bufferLabel(bufSlider.value);
-    bufSlider.oninput = () => {
-      const n = clampBuffer(bufSlider.value);
-      localStorage.setItem(KEYS.PLAYBACK_BUFFER, String(n));
-      if (bufOut) bufOut.textContent = bufferLabel(n);
-    };
+  // In-tab pre-roll buffer slider. 0 = Off (live edge). Read at play time.
+  {
+    const bufSlider   = $('playback-buffer');
+    const bufOut      = $('playback-buffer-out');
+    const largeCb     = $('buffer-large-cb');
+    const largeMaxWrap = $('buffer-large-max-wrap');
+    const largeMaxIn  = $('buffer-large-max');
+
+    if (bufSlider) {
+      // Scale the current slider value proportionally to a new max ceiling.
+      const applyBufMax = (newMax) => {
+        const oldMax = parseInt(bufSlider.max, 10) || 60;
+        const oldVal = parseInt(bufSlider.value, 10) || 0;
+        const newVal = oldMax > 0
+          ? Math.min(Math.round(oldVal / oldMax * newMax), newMax)
+          : 0;
+        bufSlider.max = String(newMax);
+        bufSlider.value = String(newVal);
+        localStorage.setItem(KEYS.PLAYBACK_BUFFER, String(newVal));
+        if (bufOut) bufOut.textContent = bufferLabel(newVal, newMax);
+      };
+
+      // Restore large-buffer state first so the slider max is correct.
+      const largeEnabled  = localStorage.getItem(KEYS.BUFFER_LARGE_ENABLED) === '1';
+      const storedLargeMax = Math.min(
+        Math.max(parseInt(localStorage.getItem(KEYS.BUFFER_LARGE_MAX) || '120', 10), 61),
+        300
+      );
+      const initMax = largeEnabled ? storedLargeMax : 60;
+
+      if (largeCb)     largeCb.checked = largeEnabled;
+      if (largeMaxIn && largeEnabled)  largeMaxIn.value = String(storedLargeMax);
+      if (largeMaxWrap) largeMaxWrap.style.display = largeEnabled ? 'flex' : 'none';
+
+      bufSlider.max = String(initMax);
+      const storedVal = parseInt(localStorage.getItem(KEYS.PLAYBACK_BUFFER) || '0', 10);
+      bufSlider.value = String(Math.min(Math.max(storedVal, 0), initMax));
+      if (bufOut) bufOut.textContent = bufferLabel(bufSlider.value, initMax);
+
+      bufSlider.oninput = () => {
+        const max = _effectiveBufMax();
+        const n = Math.min(Math.max(parseInt(bufSlider.value, 10), 0), max);
+        localStorage.setItem(KEYS.PLAYBACK_BUFFER, String(n));
+        if (bufOut) bufOut.textContent = bufferLabel(n, max);
+      };
+
+      if (largeCb) {
+        largeCb.onchange = () => {
+          const enabled = largeCb.checked;
+          localStorage.setItem(KEYS.BUFFER_LARGE_ENABLED, enabled ? '1' : '0');
+          if (largeMaxWrap) largeMaxWrap.style.display = enabled ? 'flex' : 'none';
+          if (enabled && largeMaxIn) {
+            const stored = Math.min(
+              Math.max(parseInt(localStorage.getItem(KEYS.BUFFER_LARGE_MAX) || '120', 10), 61),
+              300
+            );
+            largeMaxIn.value = String(stored);
+          }
+          applyBufMax(_effectiveBufMax());
+        };
+      }
+
+      if (largeMaxIn) {
+        largeMaxIn.oninput = () => {
+          const v = parseInt(largeMaxIn.value, 10);
+          if (!Number.isFinite(v) || v < 61 || v > 300) return;
+          localStorage.setItem(KEYS.BUFFER_LARGE_MAX, String(v));
+          applyBufMax(v);
+        };
+      }
+    }
   }
   // (pb-stop button removed — Play button itself toggles to Stop.)
   $('fav-search').oninput = e => { favSearch = e.target.value; favPage = 0; renderFavs(); };

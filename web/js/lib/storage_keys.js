@@ -11,7 +11,9 @@ export const KEYS = Object.freeze({
   LAST_PLAY: 'aceman.lastPlay',
   GLOW: 'aceman.acemanGlow',
   SHOW_ALL_BROWSERS: 'aceman.showAllBrowsers',
-  PLAYBACK_BUFFER: 'aceman.playbackBuffer', // in-tab pre-roll seconds
-  RESTARTED_AT: 'aceman.restartedAt',       // sessionStorage breadcrumb
-  GPU_ACCEL: 'aceman.gpuAccel',             // GPU acceleration settings JSON
+  PLAYBACK_BUFFER: 'aceman.playbackBuffer',       // in-tab pre-roll seconds
+  BUFFER_LARGE_ENABLED: 'aceman.bufferLargeOn',  // large-buffer mode checkbox
+  BUFFER_LARGE_MAX: 'aceman.bufferLargeMax',      // custom slider ceiling (s)
+  RESTARTED_AT: 'aceman.restartedAt',             // sessionStorage breadcrumb
+  GPU_ACCEL: 'aceman.gpuAccel',                   // GPU acceleration settings JSON
 });

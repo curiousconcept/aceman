@@ -189,7 +189,6 @@
       <video id="pb-video" controls playsinline
              style="display:none; width:100%; max-height:55vh; background:#000; margin:.5rem 0"></video>
       <div class="row" style="justify-content: flex-end; gap: .5rem; flex-wrap: wrap">
-        <span id="fps-badge" class="status" style="display:none"></span>
         <div class="gate-hint" id="pb-video-status" style="margin: 0; flex-shrink: 0"></div>
       </div>
     </div>
@@ -231,6 +230,17 @@
                style="flex:1; min-width:0">
         <output id="playback-buffer-out"
                 style="min-width:4ch; text-align:right">Off</output>
+      </div>
+      <div class="field" id="buffer-large-field" style="justify-content:center; gap:.6rem; flex-wrap:wrap">
+        <label style="display:flex; align-items:center; gap:.4rem; cursor:pointer">
+          <input type="checkbox" id="buffer-large-cb">
+          <span class="tip" data-tip="Large buffers require more memory in the web container. If the container crashes, raise its limit: ACE_WEB_MEMORY=2g aceman_web">Enable large buffers</span>
+        </label>
+        <div id="buffer-large-max-wrap" style="display:none; align-items:center; gap:.4rem; white-space:nowrap">
+          Max
+          <input type="number" id="buffer-large-max" min="61" max="300" step="1" value="120">
+          s
+        </div>
       </div>
       <div class="gate-hint" id="player-hint"></div>
     </div>
@@ -293,7 +303,7 @@
           <div class="setup-row-head" style="justify-content:center">
             <span class="tip" data-tip="In-browser player only. Requires GPU device passthrough to the web container.">GPU Acceleration</span>
           </div>
-          <div id="gpu-unavailable" style="display:none">
+          <div id="gpu-unavailable" style="display:none; text-align:center">
             <span class="gate-hint">No compatible GPU detected — nvidia-smi and VA-API both absent.</span>
           </div>
           <div id="gpu-controls" style="display:none">

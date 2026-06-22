@@ -19,13 +19,13 @@ export const BUFFER_MIN = 0;
 export const BUFFER_MAX = 60;
 
 // Normalise an arbitrary stored string / slider value to an integer in
-// [0, 60]. NaN, null, junk → 0 (disabled), so a corrupt localStorage
-// entry degrades to "off" rather than throwing at play time.
-export function clampBuffer(value) {
+// [0, maxVal]. NaN, null, junk → 0 (disabled). maxVal defaults to the
+// standard 60 s ceiling; pass a larger value when large-buffer mode is on.
+export function clampBuffer(value, maxVal = BUFFER_MAX) {
   const n = Math.round(Number(value));
   if (!Number.isFinite(n)) return BUFFER_MIN;
   if (n < BUFFER_MIN) return BUFFER_MIN;
-  if (n > BUFFER_MAX) return BUFFER_MAX;
+  if (n > maxVal) return maxVal;
   return n;
 }
 
@@ -48,7 +48,7 @@ export function bufferReady(buffered, currentTime, target) {
 }
 
 // Human label for the slider's live read-out: "Off" at 0, else "N s".
-export function bufferLabel(value) {
-  const n = clampBuffer(value);
+export function bufferLabel(value, maxVal = BUFFER_MAX) {
+  const n = clampBuffer(value, maxVal);
   return n === 0 ? 'Off' : `${n} s`;
 }
