@@ -26,7 +26,10 @@ FROM docker.io/library/python:3.11-slim-bookworm
 # rm -rf /var/lib/apt/lists shaves another ~40 MB.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       ffmpeg mesa-va-drivers libva-drm2 mesa-vulkan-drivers curl \
+       ffmpeg \
+       mesa-va-drivers libva-drm2 mesa-vulkan-drivers \
+       intel-media-va-driver i965-va-driver \
+       curl \
     && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /usr/local/share/aceman/shaders \
