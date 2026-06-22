@@ -170,6 +170,19 @@ function renderFavRow(f) {
   wrap.appendChild(name);
   wrap.appendChild(last);
 
+  const triggerPlay = async () => {
+    row.classList.add('fav-playing');
+    $('cid-input').value = f.cid;
+    showBusy('Starting…');
+    try { await play({ name: f.name }); } finally {
+      hideBusy();
+      // glow fades via animation; remove class after it completes
+      setTimeout(() => row.classList.remove('fav-playing'), 1200);
+    }
+  };
+
+  name.onclick = triggerPlay;
+
   const playBtn = document.createElement('button');
   // U+25B6 BLACK RIGHT-POINTING TRIANGLE — universal "play" glyph,
   // unicode-only so we don't have to ship an SVG / icon font.
@@ -177,11 +190,7 @@ function renderFavRow(f) {
   playBtn.title = 'Play';
   playBtn.setAttribute('aria-label', 'Play');
   playBtn.classList.add('icon-btn');
-  playBtn.onclick = async () => {
-    $('cid-input').value = f.cid;
-    showBusy('Starting…');
-    try { await play({ name: f.name }); } finally { hideBusy(); }
-  };
+  playBtn.onclick = triggerPlay;
 
   const delBtn = document.createElement('button');
   // U+1F5D1 WASTEBASKET — universal "delete" glyph, unicode-only.

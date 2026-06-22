@@ -515,13 +515,22 @@
 
   /* Favourites row layout */
   .fav { display: flex; align-items: center; gap: .35rem;
-         padding: .35rem .25rem; border-bottom: 1px solid #222; }
-  .fav:last-child { border-bottom: none; }
+         padding: .35rem .25rem; border-radius: 3px;
+         border: 1px solid transparent;
+         box-shadow: 0 1px 0 #222;        /* row separator via shadow, frees border for glow */
+         transition: border-color .15s, box-shadow .15s; }
+  .fav:last-child { box-shadow: none; }
   .fav-name-wrap { flex: 1; min-width: 0; display: flex; align-items: baseline;
-                   gap: .5rem; }
-  .fav-name { cursor: pointer; overflow: hidden; text-overflow: ellipsis;
-              white-space: nowrap; }
-  .fav-name:hover { color: var(--acc); }
+                   gap: .5rem; cursor: pointer; }
+  .fav-name-wrap:hover .fav-name { color: var(--acc); }
+  .fav-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @keyframes fav-glow {
+    0%   { border-color: transparent; }
+    25%  { border-color: var(--hover); box-shadow: 0 0 6px rgba(181,146,56,.5); }
+    75%  { border-color: var(--hover); box-shadow: 0 0 6px rgba(181,146,56,.5); }
+    100% { border-color: transparent; box-shadow: none; }
+  }
+  .fav.fav-playing { animation: fav-glow 1.2s ease-in-out forwards; }
   .fav-last { color: var(--mut); font-size: .72rem; white-space: nowrap; }
   .fav-edit-input { flex: 1; padding: .2rem .4rem; font: inherit;
                     background: #222; color: var(--fg);
