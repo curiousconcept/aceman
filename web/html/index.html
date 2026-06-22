@@ -228,28 +228,10 @@
       <div class="field" id="buffer-field"
            title="Only affects the in-tab browser player. Holds playback this many seconds behind the live edge, building a cushion so a brief engine/network hiccup doesn't stall the video. Higher = more delay, fewer stalls. 0 (Off) plays at the live edge as before. Applies on the next Play.">
         <label class="field-label" for="playback-buffer">Buffer</label>
-        <input type="range" id="playback-buffer" min="0" max="60" step="1" value="0"
+        <input type="range" id="playback-buffer" min="0" max="300" step="1" value="0"
                style="flex:1; min-width:0">
         <output id="playback-buffer-out"
                 style="min-width:4ch; text-align:right">Off</output>
-      </div>
-      <div class="field" id="buffer-large-field" style="justify-content:center; gap:.6rem; flex-wrap:wrap">
-        <label style="display:flex; align-items:center; gap:.4rem; cursor:pointer">
-          <input type="checkbox" id="buffer-large-cb">
-          <span class="tip" data-tip="Large buffers require more memory in the web container. If the container crashes, raise its limit: ACE_WEB_MEMORY=2g aceman_web">Enable large buffers</span>
-        </label>
-        <div id="buffer-large-max-wrap" style="display:none; align-items:center; gap:.4rem; white-space:nowrap">
-          Max
-          <div class="num-spin">
-            <input type="number" id="buffer-large-max" min="60" max="300" step="1" value="120">
-            <div class="num-spin-btns">
-              <button class="num-spin-btn" id="buf-max-up" tabindex="-1" aria-label="Increase">▲</button>
-              <button class="num-spin-btn" id="buf-max-dn" tabindex="-1" aria-label="Decrease">▼</button>
-            </div>
-          </div>
-          s
-          <span id="buffer-large-max-hint" style="font-size:.8rem"></span>
-        </div>
       </div>
       <div class="gate-hint" id="player-hint"></div>
     </div>

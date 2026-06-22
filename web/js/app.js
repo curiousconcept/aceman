@@ -883,19 +883,10 @@ function _preRollBuffer(v, status, target, onRelease) {
   tick();
 }
 
-function _effectiveBufMax() {
-  const largeCb = $('buffer-large-cb');
-  const largeMaxIn = $('buffer-large-max');
-  if (!largeCb || !largeCb.checked) return 60;
-  const v = parseInt(largeMaxIn && largeMaxIn.value, 10);
-  return (Number.isFinite(v) && v >= 60) ? Math.min(v, 300) : 120;
-}
-
 function getPlaybackBuffer() {
-  const max = _effectiveBufMax();
   const el = $('playback-buffer');
-  if (el) return clampBuffer(el.value, max);
-  return clampBuffer(localStorage.getItem(KEYS.PLAYBACK_BUFFER), max);
+  if (el) return clampBuffer(el.value, 300);
+  return clampBuffer(localStorage.getItem(KEYS.PLAYBACK_BUFFER), 300);
 }
 
 function stopInBrowserPlayback() {
@@ -2354,133 +2345,18 @@ async function toggleDesktopEntry() {
   }
   // In-tab pre-roll buffer slider. 0 = Off (live edge). Read at play time.
   {
-    const bufSlider    = $('playback-buffer');
-    const bufOut       = $('playback-buffer-out');
-    const largeCb      = $('buffer-large-cb');
-    const largeMaxWrap = $('buffer-large-max-wrap');
-    const largeMaxIn   = $('buffer-large-max');
-
+    const bufSlider = $('playback-buffer');
+    const bufOut    = $('playback-buffer-out');
     if (bufSlider) {
-      // Update the slider max and clamp the current value to it.
-      // Intentionally NOT proportional — 9 s stays 9 s; the thumb
-      // just moves left when the ceiling grows.
-      const applyBufMax = (newMax) => {
-        const cur = parseInt(bufSlider.value, 10) || 0;
-        const clamped = Math.min(cur, newMax);
-        bufSlider.max = String(newMax);
-        bufSlider.value = String(clamped);
-        localStorage.setItem(KEYS.PLAYBACK_BUFFER, String(clamped));
-        if (bufOut) bufOut.textContent = bufferLabel(clamped, newMax);
-        updateLargeHint(newMax);
-        updateBufSliderZone(newMax);
-      };
-
-      // Hint label to the right of the Max input:
-      //   < 60  → "must be ≥ 60" in red
-      //   = 60  → "(default)" greyed — same range as standard mode
-      //   > 60  → blank
-      const updateLargeHint = (max) => {
-        const hint = $('buffer-large-max-hint');
-        if (!hint) return;
-        if (!Number.isFinite(max) || max < 60) {
-          hint.textContent = 'must be ≥ 60';
-          hint.style.color = 'var(--err)';
-        } else if (max === 60) {
-          hint.textContent = '(default)';
-          hint.style.color = 'var(--mut)';
-        } else {
-          hint.textContent = '';
-          hint.style.color = '';
-        }
-      };
-
-      // Amber tint on the slider track from the 60 s mark to the right
-      // edge, making the "large buffer" zone visually distinct.
-      // The slider already uses appearance:none so inline background works.
-      const updateBufSliderZone = (max) => {
-        if (max <= 60) {
-          bufSlider.style.background = '';
-          return;
-        }
-        const pct = (60 / max * 100).toFixed(1);
-        bufSlider.style.background =
-          `linear-gradient(to right,#0c0c0c 0%,#0c0c0c ${pct}%,rgba(181,146,56,.13) ${pct}%)`;
-      };
-
-      // Restore large-buffer state first so the slider max is correct.
-      const largeEnabled   = localStorage.getItem(KEYS.BUFFER_LARGE_ENABLED) === '1';
-      const storedLargeMax = Math.min(
-        Math.max(parseInt(localStorage.getItem(KEYS.BUFFER_LARGE_MAX) || '120', 10), 60),
-        300
-      );
-      const initMax = largeEnabled ? storedLargeMax : 60;
-
-      if (largeCb)    largeCb.checked = largeEnabled;
-      if (largeMaxIn && largeEnabled) largeMaxIn.value = String(storedLargeMax);
-      if (largeMaxWrap) largeMaxWrap.style.display = largeEnabled ? 'flex' : 'none';
-
-      bufSlider.max = String(initMax);
+      bufSlider.max = '300';
       const storedVal = parseInt(localStorage.getItem(KEYS.PLAYBACK_BUFFER) || '0', 10);
-      bufSlider.value = String(Math.min(Math.max(storedVal, 0), initMax));
-      if (bufOut) bufOut.textContent = bufferLabel(bufSlider.value, initMax);
-      if (largeEnabled) { updateLargeHint(initMax); updateBufSliderZone(initMax); }
-
+      bufSlider.value = String(Math.min(Math.max(storedVal, 0), 300));
+      if (bufOut) bufOut.textContent = bufferLabel(bufSlider.value, 300);
       bufSlider.oninput = () => {
-        const max = _effectiveBufMax();
-        const n = Math.min(Math.max(parseInt(bufSlider.value, 10), 0), max);
+        const n = Math.min(Math.max(parseInt(bufSlider.value, 10), 0), 300);
         localStorage.setItem(KEYS.PLAYBACK_BUFFER, String(n));
-        if (bufOut) bufOut.textContent = bufferLabel(n, max);
+        if (bufOut) bufOut.textContent = bufferLabel(n, 300);
       };
-
-      if (largeCb) {
-        largeCb.onchange = () => {
-          const enabled = largeCb.checked;
-          localStorage.setItem(KEYS.BUFFER_LARGE_ENABLED, enabled ? '1' : '0');
-          if (largeMaxWrap) largeMaxWrap.style.display = enabled ? 'flex' : 'none';
-          if (enabled && largeMaxIn) {
-            const stored = Math.min(
-              Math.max(parseInt(localStorage.getItem(KEYS.BUFFER_LARGE_MAX) || '120', 10), 60),
-              300
-            );
-            largeMaxIn.value = String(stored);
-          }
-          applyBufMax(_effectiveBufMax());
-        };
-      }
-
-      if (largeMaxIn) {
-        largeMaxIn.oninput = () => {
-          const v = parseInt(largeMaxIn.value, 10);
-          if (!Number.isFinite(v)) return;
-          if (v < 60) { updateLargeHint(v); return; }  // show error, don't apply
-          const clamped = Math.min(v, 300);
-          if (v > 300) largeMaxIn.value = '300';
-          localStorage.setItem(KEYS.BUFFER_LARGE_MAX, String(clamped));
-          applyBufMax(clamped);
-        };
-
-        // Custom ▲▼ buttons — step by 5 for comfort at 60–300 s scale.
-        const step = 5;
-        const bufMaxUp = $('buf-max-up');
-        const bufMaxDn = $('buf-max-dn');
-        const syncDnBtn = () => {
-          if (bufMaxDn) bufMaxDn.disabled =
-            (parseInt(largeMaxIn.value, 10) || 0) <= 60;
-        };
-        if (bufMaxUp) bufMaxUp.onclick = () => {
-          const v = Math.min((parseInt(largeMaxIn.value, 10) || 60) + step, 300);
-          largeMaxIn.value = String(v);
-          largeMaxIn.dispatchEvent(new Event('input'));
-          syncDnBtn();
-        };
-        if (bufMaxDn) bufMaxDn.onclick = () => {
-          const v = Math.max((parseInt(largeMaxIn.value, 10) || 60) - step, 60);
-          largeMaxIn.value = String(v);
-          largeMaxIn.dispatchEvent(new Event('input'));
-          syncDnBtn();
-        };
-        syncDnBtn();
-      }
     }
   }
   // (pb-stop button removed — Play button itself toggles to Stop.)

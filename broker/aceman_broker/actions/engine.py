@@ -239,7 +239,7 @@ def action_engine_memory(params: "dict | None" = None) -> dict:
     """Return current and limit memory for the engine container.
     Same parsing logic as web.memory — see web_lifecycle.py."""
     from .web_lifecycle import _parse_mem_str
-    if not container_running_named(NAME):
+    if not container_running():
         return {"available": False}
     try:
         r = subprocess.run(
