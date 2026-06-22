@@ -419,12 +419,10 @@
      always share the same row; flex:1 still fills the remaining space. */
   .cid-wrap { display: flex; align-items: center; flex: 1; min-width: 0; }
   #cid-input { flex: 1; min-width: 0; }
-  /* Don't let the save button shrink: when there isn't enough horizontal
-     room for both the full-width input and this button, the button wraps.
-     margin auto then centres it on its solo line in single-column mode. */
-  @media (max-width: 1149px) {
-    #save-btn { flex-shrink: 0; margin-left: auto; margin-right: auto; }
-  }
+  /* Save button always lives on its own wrapped line below the input row.
+     flex-basis:100% forces a line break regardless of available space so
+     it never competes with the play buttons + cid-wrap for width. */
+  #save-btn { flex-basis: 100%; flex-shrink: 0; margin-left: auto; margin-right: auto; }
 
   /* Corner label: a small "fieldset legend"-style tag in the top-left
      of a card. Sits half-overlapping the card border so it reads as a
