@@ -95,3 +95,12 @@ _Not supported yet._
 The web sends one JSON action per line to the broker over a `0600` unix
 socket; the broker owns every host-touching operation. That boundary is
 the security model — see [`docs/security.md`](docs/security.md).
+
+## License
+
+aceman's own code is **MIT** — see [`LICENSE`](LICENSE). Exceptions:
+
+- **Ace Stream engine** — proprietary, not included; you download it
+  yourself and it's governed by Ace Stream's own terms.
+- **`web/vendor/mpegts.min.js`** — bundled third-party library under
+  **Apache-2.0** (see its header and [`web/vendor/README.md`](web/vendor/README.md)).
