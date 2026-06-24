@@ -28,7 +28,17 @@ Requires rootless **Podman ≥ 4.0**, **Python ≥ 3.9** (stdlib only),
 ```bash
 git clone https://github.com/curiousconcept/aceman.git
 cd aceman
-# one-time: provide the engine tarball — see container/engine/README.md
+```
+
+**One-time:** download the Ace Stream engine tarball (proprietary, not
+shipped here) from **https://docs.acestream.net/products/#linux** — the
+**Linux → Ubuntu, amd64 / py3.10** build — and save it as
+`container/engine/dist/engine.tar.gz`. Details + hash verification:
+[`container/engine/README.md`](container/engine/README.md).
+
+Then:
+
+```bash
 ./aceman_web                 # web UI  → http://127.0.0.1:8765/
 # or
 ./aceman <content_id>        # external player (40-hex id or acestream://…)
@@ -49,8 +59,12 @@ Player install hints:
 Grab the repo ZIP —
 [direct download](https://github.com/curiousconcept/aceman/archive/refs/heads/main.zip) —
 extract it, open the `wsl/` folder, then double-click `install.bat`
-followed by `run.bat`. Prefer Windows VLC/mpv over browser playback?
-`get_url_stream.bat <id>` hands a stream URL to your player. Full steps:
+followed by `run.bat`. As on Linux, you'll do the **one-time engine
+tarball download** (from
+[docs.acestream.net](https://docs.acestream.net/products/#linux)) and
+drop it into the clone — `wsl/README.md` shows the exact Windows path.
+Prefer Windows VLC/mpv over browser playback? `get_url_stream.bat <id>`
+hands a stream URL to your player. Full steps:
 **[`wsl/README.md`](wsl/README.md)**.
 
 ### macOS
