@@ -61,7 +61,13 @@ export function buildPlaybackOptions({
   }));
 
   // --- External players (VLC, mpv, ...) --------------------------
-  const playerOptions = detectedPlayers.map(p => ({
+  // Same dedup logic as browsers: when showAll is off, keep only the
+  // first detected install per player name so system + flatpak copies
+  // of the same app don't both appear.
+  const visiblePlayers = showAll
+    ? detectedPlayers
+    : detectedPlayers.filter((p, i, arr) => arr.findIndex(q => q.name === p.name) === i);
+  const playerOptions = visiblePlayers.map(p => ({
     value: encodeTarget('external', p.name, p.source),
     text: `${p.name} (${p.source})`,
     disabled: false,

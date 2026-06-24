@@ -186,13 +186,22 @@ function renderFavRow(f) {
 
   wrap.onclick = triggerPlay;
 
+  row.oncontextmenu = e => {
+    e.preventDefault();
+    navigator.clipboard.writeText(f.cid).then(() => {
+      const prev = row.style.opacity;
+      row.style.opacity = '0.5';
+      setTimeout(() => { row.style.opacity = prev; }, 350);
+    }).catch(() => {});
+  };
+
   // ⋮ context menu — Rename / Delete
   const menuWrap = document.createElement('div');
   menuWrap.className = 'fav-menu-wrap';
 
   const menuBtn = document.createElement('button');
   menuBtn.className = 'icon-btn fav-menu-btn';
-  menuBtn.textContent = '⋮';
+  menuBtn.textContent = '☰';
   menuBtn.title = 'More options';
   menuBtn.setAttribute('aria-label', 'More options');
 
@@ -299,8 +308,9 @@ let allSearchResults = [];
 let searchPage = 0;
 const SEARCH_PAGE_SIZE = 5;
 
-// 300ms trailing-edge debounce so live typing doesn't hammer the upstream.
-const onSearchInput = debounce(() => runSearch(), 300);
+// 600ms trailing-edge debounce — long enough that mid-word keystrokes don't
+// fire a request, short enough to feel responsive after a pause.
+const onSearchInput = debounce(() => runSearch(), 600);
 
 // Show/hide the search section based on what's in the unified input.
 // We treat the input as a free-text search query iff it's NOT a 40-hex
@@ -322,6 +332,7 @@ function refreshSearchSection() {
   const isCid = parseId(v) !== null;
   const wantSearch = !isCid && shouldSearch(normaliseQuery(v));
   sec.style.display = wantSearch ? '' : 'none';
+  if (wantSearch) hideHistorySection();
   if (!wantSearch) {
     const status = $('search-status');
     if (status) status.textContent = '';
@@ -365,6 +376,7 @@ async function runSearch() {
   lastSearchQuery = q;
   $('search-results').innerHTML = '';
   $('search-status').textContent = '';
+  showError('');
   console.debug('[search] query', { len: q.length, query: q });
   if (!shouldSearch(q)) {
     console.debug('[search] skipped (too short)');
@@ -410,7 +422,234 @@ function renderSearchResults() {
     $('search-next').disabled = !p.hasNext;
     $('search-info').textContent = p.label();
   }
+  requestAnimationFrame(alignSearchToInput);
 }
+
+function alignSearchToInput() {
+  const playRow = document.querySelector('.play-row');
+  if (!playRow) return;
+  const section = $('search-section');
+  const historySec = $('history-section');
+  const hint = $('play-hint');
+  const card = (section || hint || historySec) &&
+    (section || hint || historySec).closest('.card');
+  if (!card) return;
+  const rowRect = playRow.getBoundingClientRect();
+  const cardRect = card.getBoundingClientRect();
+  const cs = getComputedStyle(card);
+  const padLeft = parseFloat(cs.paddingLeft);
+  const padRight = parseFloat(cs.paddingRight);
+  const cardContentW = cardRect.width - padLeft - padRight;
+  const rawMl = Math.max(0, rowRect.left - cardRect.left - padLeft);
+  const w = Math.min(rowRect.width, Math.max(0, cardContentW - rawMl)) + 'px';
+  const ml = rawMl + 'px';
+  if (section && section.style.display !== 'none') {
+    section.style.width = w;
+    section.style.marginLeft = ml;
+  }
+  if (historySec && historySec.style.display !== 'none') {
+    historySec.style.width = w;
+    historySec.style.marginLeft = ml;
+  }
+  if (hint) {
+    hint.style.width = w;
+    hint.style.marginLeft = ml;
+  }
+}
+
+// ---- watch history ---------------------------------------------------------
+
+let _historyDropdown = null;
+let _historyTimer = null;
+let _historyMoveListener = null;
+
+function closeHistoryDropdown() {
+  if (_historyDropdown) { _historyDropdown.remove(); _historyDropdown = null; }
+}
+
+function _startHistoryTimer() {
+  clearTimeout(_historyTimer);
+  _historyTimer = setTimeout(() => hideHistorySection(), 30_000);
+}
+
+function hideHistorySection() {
+  clearTimeout(_historyTimer);
+  _historyTimer = null;
+  const s = $('history-section');
+  if (s && _historyMoveListener) {
+    s.removeEventListener('pointermove', _historyMoveListener);
+    _historyMoveListener = null;
+  }
+  if (s) s.style.display = 'none';
+}
+
+// Convert a SQLite 'YYYY-MM-DD HH:MM:SS' UTC stamp to a local
+// 'YYYY-MM-DD HH:MM' string using the browser's OS timezone.
+function sqliteUtcToLocal(stamp) {
+  if (!stamp) return '';
+  const d = new Date(stamp.replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return stamp.slice(0, 16);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function showHistorySection(entries) {
+  const sec = $('history-section');
+  const list = $('history-list');
+  if (!sec || !list) return;
+  list.innerHTML = '';
+  if (!entries.length) {
+    const empty = document.createElement('div');
+    empty.className = 'status';
+    empty.style.cssText = 'text-align:center;padding:.5rem 0';
+    empty.textContent = 'No watch history yet.';
+    list.appendChild(empty);
+  } else {
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:.25rem';
+    const clearBtn = document.createElement('button');
+    clearBtn.textContent = 'Clear all';
+    clearBtn.className = 'danger-outline';
+    clearBtn.style.cssText = 'font-size:.75rem;padding:.15rem .5rem';
+    clearBtn.onclick = async () => {
+      await api('/api/history', { method: 'DELETE' }).catch(() => {});
+      showHistorySection([]);
+    };
+    header.appendChild(clearBtn);
+    list.appendChild(header);
+    for (const h of entries) list.appendChild(renderHistoryRow(h));
+  }
+  sec.style.display = '';
+  requestAnimationFrame(alignSearchToInput);
+  if (!_historyMoveListener) {
+    _historyMoveListener = () => _startHistoryTimer();
+    sec.addEventListener('pointermove', _historyMoveListener);
+  }
+  _startHistoryTimer();
+}
+
+function renderHistoryRow(h) {
+  const row = document.createElement('div');
+  row.className = 'fav';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'fav-name-wrap';
+
+  const name = document.createElement('span');
+  name.className = 'fav-name';
+  name.textContent = h.name;
+  name.title = h.cid;
+
+  const sub = document.createElement('span');
+  sub.className = 'fav-last';
+  sub.textContent = sqliteUtcToLocal(h.played_at);
+
+  wrap.appendChild(name);
+  wrap.appendChild(sub);
+  wrap.onclick = async () => {
+    hideHistorySection();
+    $('cid-input').value = h.cid;
+    showBusy('Starting…');
+    try { await play({ name: h.name }); } finally { hideBusy(); }
+  };
+
+  row.oncontextmenu = e => {
+    e.preventDefault();
+    navigator.clipboard.writeText(h.cid).then(() => {
+      const prev = row.style.opacity;
+      row.style.opacity = '0.5';
+      setTimeout(() => { row.style.opacity = prev; }, 350);
+    }).catch(() => {});
+  };
+
+  const existing = findFavouriteByCid(allFavs, h.cid);
+  if (!existing) {
+    const starBtn = document.createElement('button');
+    starBtn.className = 'icon-btn';
+    starBtn.textContent = '★';
+    starBtn.title = 'Add to favourites';
+    starBtn.setAttribute('aria-label', 'Add to favourites');
+    starBtn.onclick = () => instaSave(
+      { cid: h.cid, name: h.name, translated_name: h.name }, starBtn, h.name);
+    row.appendChild(wrap);
+    row.appendChild(starBtn);
+  } else {
+    row.appendChild(wrap);
+  }
+
+  const delBtn = document.createElement('button');
+  delBtn.className = 'icon-btn';
+  delBtn.textContent = '🗑';
+  delBtn.title = 'Remove from history';
+  delBtn.setAttribute('aria-label', 'Remove from history');
+  delBtn.onclick = async () => {
+    await api('/api/history/' + encodeURIComponent(h.cid), { method: 'DELETE' })
+      .catch(() => {});
+    row.remove();
+  };
+  row.appendChild(delBtn);
+
+  return row;
+}
+
+async function openHistoryDropdown() {
+  closeHistoryDropdown();
+  if (mode !== 'sqlite') return;
+  let all;
+  try { all = await api('/api/history'); } catch { return; }
+  if (!all || !all.length) return;
+
+  const input = $('cid-input');
+  const inputRect = input.getBoundingClientRect();
+
+  const dd = document.createElement('div');
+  dd.id = 'history-dropdown';
+  dd.style.left = inputRect.left + 'px';
+  dd.style.top = (inputRect.bottom + 2) + 'px';
+  dd.style.width = inputRect.width + 'px';
+
+  const top5 = all.slice(0, 5);
+  for (const h of top5) {
+    const opt = document.createElement('div');
+    opt.className = 'aceman-select-option';
+    const nameSpan = document.createElement('strong');
+    nameSpan.textContent = h.name;
+    const cidSpan = document.createElement('span');
+    cidSpan.style.cssText = 'color:var(--mut);font-size:.78rem;margin-left:.5rem';
+    cidSpan.textContent = h.cid.slice(0, 8) + '…';
+    opt.appendChild(nameSpan);
+    opt.appendChild(cidSpan);
+    opt.onclick = () => {
+      closeHistoryDropdown();
+      $('cid-input').value = h.cid;
+      showBusy('Starting…');
+      play({ name: h.name }).finally(hideBusy);
+    };
+    dd.appendChild(opt);
+  }
+
+  if (all.length > 5) {
+    const showAll = document.createElement('div');
+    showAll.className = 'aceman-select-option';
+    showAll.style.cssText = 'border-top:1px solid #333;color:var(--mut);font-size:.82rem';
+    showAll.textContent = `Show all (${all.length})`;
+    showAll.onclick = () => {
+      closeHistoryDropdown();
+      showHistorySection(all);
+    };
+    dd.appendChild(showAll);
+  }
+
+  document.body.appendChild(dd);
+  _historyDropdown = dd;
+}
+
+document.addEventListener('click', e => {
+  if (_historyDropdown && !_historyDropdown.contains(e.target) &&
+      e.target !== $('cid-input')) {
+    closeHistoryDropdown();
+  }
+});
 
 function renderSearchRow(r) {
   const row = document.createElement('div');
@@ -419,12 +658,12 @@ function renderSearchRow(r) {
   const wrap = document.createElement('div');
   wrap.className = 'fav-name-wrap';
 
-  // Pick the more useful label as primary. Keep the alternate as a sub-line
-  // so Latin users see the English name with the Cyrillic original below
-  // (or vice versa).
-  const primary = (r.translated_name || r.name).trim();
-  const altRaw = (r.translated_name && r.name && r.translated_name !== r.name)
-    ? r.name : '';
+  // Original-language name is primary white text; English translation is the
+  // muted sub-label. If the names are identical (English-only channel) the
+  // sub-label is omitted and the cid preview is shown instead.
+  const primary = (r.name || r.translated_name || '').trim();
+  const alt = (r.translated_name && r.translated_name !== r.name)
+    ? r.translated_name.trim() : '';
 
   const name = document.createElement('span');
   name.className = 'fav-name';
@@ -433,20 +672,24 @@ function renderSearchRow(r) {
 
   const sub = document.createElement('span');
   sub.className = 'fav-last';
-  sub.textContent = altRaw || (r.cid.slice(0, 8) + '…');
+  sub.textContent = alt || (r.cid.slice(0, 8) + '…');
 
   wrap.appendChild(name);
   wrap.appendChild(sub);
 
-  const playBtn = document.createElement('button');
-  playBtn.textContent = '▶';
-  playBtn.title = 'Play';
-  playBtn.setAttribute('aria-label', 'Play');
-  playBtn.classList.add('icon-btn');
-  playBtn.onclick = async () => {
+  wrap.onclick = async () => {
     $('cid-input').value = r.cid;
     showBusy('Starting…');
-    try { await play({ name: primary, altName: altRaw }); } finally { hideBusy(); }
+    try { await play({ name: primary, altName: alt }); } finally { hideBusy(); }
+  };
+
+  row.oncontextmenu = e => {
+    e.preventDefault();
+    navigator.clipboard.writeText(r.cid).then(() => {
+      const prev = row.style.opacity;
+      row.style.opacity = '0.5';
+      setTimeout(() => { row.style.opacity = prev; }, 350);
+    }).catch(() => {});
   };
 
   const saveBtn = document.createElement('button');
@@ -466,7 +709,6 @@ function renderSearchRow(r) {
   }
 
   row.appendChild(wrap);
-  row.appendChild(playBtn);
   row.appendChild(saveBtn);
   return row;
 }
@@ -1034,6 +1276,11 @@ async function play(opts = {}) {
     api('/api/favs/touch', {
       method: 'POST', body: JSON.stringify({ cid }),
     }).catch(() => {});
+    if (displayName) {
+      api('/api/history', {
+        method: 'POST', body: JSON.stringify({ cid, name: displayName }),
+      }).catch(() => {});
+    }
   }
   loadFavs();
 
@@ -1044,11 +1291,12 @@ async function play(opts = {}) {
     inBrowserSupported: inBrowserSupported(),
   });
 
-  // Browser-mode paths share a player-stop preflight so we never
-  // race a previous wrapper. External mode does its own teardown
-  // below since it tears down BOTH the in-page player AND the
-  // host wrapper before dispatching the scheme handler.
-  if (path.kind !== 'external-scheme') {
+  // Stop any host-side player before starting in-browser paths.
+  // open-in-other-browser is excluded — it shows a confirm modal
+  // first and kills the player only after the user says yes, so
+  // cancelling the confirm doesn't leave the user with a dead VLC
+  // and no stream. external-scheme does its own teardown inside its case.
+  if (path.kind === 'in-tab' || path.kind === 'in-tab-unsupported-fallback') {
     try { await api('/api/player/stop', { method: 'POST', body: '{}' }); }
     catch (_) { /* best-effort */ }
   }
@@ -1072,6 +1320,9 @@ async function play(opts = {}) {
       }))) {
         return;
       }
+      // User confirmed — now safe to stop any external player (VLC/mpv).
+      try { await api('/api/player/stop', { method: 'POST', body: '{}' }); }
+      catch (_) { /* best-effort */ }
       stopInBrowserPlayback();   // free this tab so we don't double-stream
       try {
         await api('/api/open-in-browser', {
@@ -1390,25 +1641,107 @@ function refreshPlaybackMoveButton() {
   const view = describeMoveButton(livePlaybackTarget, sel.value, selectedLabel);
   btn.style.display = view.visible ? '' : 'none';
   if (view.visible) btn.textContent = view.text;
+  requestAnimationFrame(refreshPlayerRowAlignment);
+}
+
+// Align #playback-move and #show-all-row when they wrap to a new flex row.
+//
+// Move button: indent to 5.5rem (left-aligns under the dropdown trigger).
+// Show all: center horizontally under the Move button. When Move is hidden,
+// fall back to centering under the dropdown trigger itself.
+// When either item is on the same row as the label it gets no forced indent
+// (move) or auto-push-right (show-all) instead.
+function refreshPlayerRowAlignment() {
+  const field = $('player-select-row');
+  if (!field) return;
+  const label = field.querySelector('.field-label');
+  if (!label) return;
+  const labelBottom = label.getBoundingClientRect().bottom;
+
+  const moveBtn = $('playback-move');
+  const moveBtnVisible = moveBtn && moveBtn.offsetParent !== null;
+  const moveBtnWrapped = moveBtnVisible &&
+    moveBtn.getBoundingClientRect().top > labelBottom - 4;
+
+  if (moveBtnVisible) {
+    moveBtn.style.marginLeft = moveBtnWrapped ? '5.5rem' : '';
+  }
+
+  const showAll = $('show-all-row');
+  if (!showAll) return;
+  const showAllWrapped = showAll.getBoundingClientRect().top > labelBottom - 4;
+  if (!showAllWrapped) { showAll.style.marginLeft = 'auto'; return; }
+
+  // Center show-all under the reference element (Move button when visible,
+  // otherwise the dropdown trigger). Move button's left edge is already
+  // known to be 5.5rem when wrapped, so compute its centre without a reflow.
+  const remPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
+  const showAllWidth = showAll.offsetWidth;
+
+  if (moveBtnWrapped) {
+    const moveCenter = 5.5 * remPx + moveBtn.offsetWidth / 2;
+    showAll.style.marginLeft = Math.max(0, moveCenter - showAllWidth / 2) + 'px';
+  } else {
+    const trigger = field.querySelector('.aceman-select-trigger');
+    if (trigger) {
+      const fieldLeft = field.getBoundingClientRect().left;
+      const tr = trigger.getBoundingClientRect();
+      const trigCenter = tr.left - fieldLeft + tr.width / 2;
+      showAll.style.marginLeft = Math.max(0, trigCenter - showAllWidth / 2) + 'px';
+    } else {
+      showAll.style.marginLeft = '5.5rem';
+    }
+  }
 }
 
 async function movePlaybackToSelection() {
   if (!current) return;
   const value = $('playback-target').value;
-  // Always release the previous player/proxy first — engine is
-  // single-active and a dangling player would race the new one.
-  stopInBrowserPlayback();
-  try { await api('/api/player/stop', { method: 'POST', body: '{}' }); }
-  catch (_) { /* best-effort */ }
-  // Persist the new target before launching so config + live state
-  // match. If the user already moved the dropdown, this is a no-op
-  // on the server.
-  await persistPlaybackTarget(value, /*silent=*/false);
-  // Re-run the unified play path so all three target classes go
-  // through the same dispatch (this tab / other browser / external).
-  $('cid-input').value = current.cid;
-  await play({ name: current.name });
-  refreshPlaybackMoveButton();
+
+  // Pre-compute what path the new target will take so we can ask
+  // for confirmation BEFORE showing any busy overlay or touching
+  // the current player — cancelling must leave VLC/mpv untouched.
+  const prospectivePath = decidePlaybackPath(
+    targetValueToConfig(value), { inBrowserSupported: inBrowserSupported() });
+
+  // Always confirm before moving a live stream — all paths kill the
+  // current player and the user may have clicked by accident.
+  // open-in-other-browser gets a specific warning because the tab
+  // closes; all other paths get a generic "move to X?" prompt.
+  const sel = $('playback-target');
+  const destLabel = sel.options[sel.selectedIndex]
+    ? sel.options[sel.selectedIndex].textContent.trim()
+    : 'selected player';
+
+  const confirmOpts = prospectivePath.kind === 'open-in-other-browser'
+    ? {
+        title: `Open in ${prospectivePath.label}`,
+        message: `Open the stream in ${prospectivePath.label} and close this tab? `
+               + `A new window will open in ${prospectivePath.label}. This tab will then `
+               + `close automatically so you don't end up with two players running.`,
+        confirmText: 'Open & close',
+      }
+    : {
+        title: 'Move stream',
+        message: `Move the current stream to ${destLabel}?`,
+        confirmText: 'Move',
+      };
+
+  if (!(await showConfirm(confirmOpts))) return;
+
+  // User confirmed. Now safe to stop the current player.
+  showBusy('Switching player…');
+  try {
+    try { await api('/api/player/stop', { method: 'POST', body: '{}' }); }
+    catch (_) { /* best-effort */ }
+    stopInBrowserPlayback();
+    await persistPlaybackTarget(value, /*silent=*/false);
+    $('cid-input').value = current.cid;
+    await play({ name: current.name, skipConfirm: true });
+    refreshPlaybackMoveButton();
+  } finally {
+    hideBusy();
+  }
 }
 
 async function saveFav() {
@@ -1586,6 +1919,7 @@ function refreshPlayGate() {
   btn.disabled = view.disabled;
   hint.textContent = view.hint.text;
   hint.className = view.hint.className;
+  requestAnimationFrame(alignSearchToInput);
 }
 
 async function toggleEngine() {
@@ -2056,12 +2390,12 @@ function showFavNameModal(english, original) {
 
   const radios = () => Array.from(
     overlay.querySelectorAll('input[name="favname-choice"]'));
-  // Pre-select the first visible labelled option; if neither is
-  // available, leave radios unchecked and the input is the implicit
-  // (and only) choice.
-  const defaultRadio = radios().find(r =>
-    (r.value === 'english' && hasEng) ||
-    (r.value === 'original' && hasOrig));
+  // Prefer original-language name; fall back to English if no distinct
+  // original exists. If neither is available the custom input is implicit.
+  const defaultRadio =
+    radios().find(r => r.value === 'original' && hasOrig) ||
+    radios().find(r => r.value === 'english'  && hasEng)  ||
+    null;
   radios().forEach(r => { r.checked = (r === defaultRadio); });
 
   return runModal({ overlay }, done => {
@@ -2353,19 +2687,24 @@ async function toggleDesktopEntry() {
     play();
   });
   $('cid-input').addEventListener('input', () => {
+    closeHistoryDropdown();
+    hideHistorySection();
     refreshSearchSection();
     refreshClearButton();
     onSearchInput();
+  });
+  $('cid-input').addEventListener('dblclick', e => {
+    if ($('cid-input').value !== '') return; // non-empty → standard text-select
+    e.preventDefault();
+    if (_historyDropdown) { closeHistoryDropdown(); return; }
+    openHistoryDropdown();
   });
   $('cid-clear').onclick = clearCidInput;
   $('save-btn').onclick = saveFav;
   $('engine-toggle').onclick = toggleEngine;
   $('autostart').onchange = saveAutostart;
   $('playback-target').onchange = () => persistPlaybackTarget($('playback-target').value);
-  $('playback-move').onclick = async () => {
-    showBusy('Switching player…');
-    try { await movePlaybackToSelection(); } finally { hideBusy(); }
-  };
+  $('playback-move').onclick = () => movePlaybackToSelection();
   // "Show all browser installs" is a UI-only preference (no server
   // round trip) — store it in localStorage so it survives reloads.
   const showAllCb = $('show-all-browsers');
@@ -2376,6 +2715,47 @@ async function toggleDesktopEntry() {
       renderPlaybackTargets();
     };
   }
+  // Stats line toggle — click to hide, "Display Stats" button to restore.
+  {
+    let statsHidden = localStorage.getItem(KEYS.STATS_HIDDEN) === '1';
+    const applyStatsVis = () => {
+      const s = $('pb-video-status');
+      const b = $('show-stats-btn');
+      if (!s || !b) return;
+      s.style.display = statsHidden ? 'none' : '';
+      b.style.display = statsHidden ? '' : 'none';
+    };
+    applyStatsVis();
+    const pbStatus = $('pb-video-status');
+    if (pbStatus) {
+      pbStatus.onclick = () => {
+        statsHidden = true;
+        localStorage.setItem(KEYS.STATS_HIDDEN, '1');
+        applyStatsVis();
+      };
+      pbStatus.oncontextmenu = e => {
+        e.preventDefault();
+        const text = pbStatus.textContent;
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => {
+          const prev = pbStatus.style.opacity;
+          pbStatus.style.opacity = '1';
+          pbStatus.style.color = 'var(--acc)';
+          setTimeout(() => {
+            pbStatus.style.opacity = prev;
+            pbStatus.style.color = '';
+          }, 600);
+        }).catch(() => {});
+      };
+    }
+    const showStatsBtn = $('show-stats-btn');
+    if (showStatsBtn) showStatsBtn.onclick = () => {
+      statsHidden = false;
+      localStorage.setItem(KEYS.STATS_HIDDEN, '0');
+      applyStatsVis();
+    };
+  }
+
   // In-tab pre-roll buffer slider. 0 = Off (live edge). Read at play time.
   {
     const bufSlider = $('playback-buffer');
@@ -2728,6 +3108,15 @@ async function toggleDesktopEntry() {
       // first render (init IIFE hadn't awaited /api/favs yet).
       setTimeout(renderName, 800);
     }
+  }
+
+  // Re-align the search results panel whenever the play card resizes
+  // (viewport change, sidebar appearing/disappearing, zoom).
+  if (window.ResizeObserver) {
+    const playCard = $('play-card');
+    if (playCard) new ResizeObserver(() => alignSearchToInput()).observe(playCard);
+    const playerCard = $('player-card');
+    if (playerCard) new ResizeObserver(() => refreshPlayerRowAlignment()).observe(playerCard);
   }
 })();
 

@@ -1,4 +1,4 @@
-// Pure mapping for the "Move current stream → X" button.
+// Pure mapping for the "Move current stream" button.
 //
 // The button is visible only when:
 //   1) something is actually playing (livePlaybackTarget is set), AND
@@ -12,15 +12,10 @@
 //
 // Pure. No DOM, no globals.
 
-export function describeMoveButton(livePlaybackTarget, selectedValue, selectedLabel) {
+export function describeMoveButton(livePlaybackTarget, selectedValue) {
   if (!livePlaybackTarget) return { visible: false, text: '' };
   if (!selectedValue || selectedValue === livePlaybackTarget) {
     return { visible: false, text: '' };
   }
-  // Caller passes the dropdown's currently-selected label so we
-  // can render `Move current stream → <label>`. If the caller
-  // can't fetch the label, fall back to the raw value — still
-  // legible, just less pretty.
-  const dest = selectedLabel || selectedValue;
-  return { visible: true, text: `Move current stream → ${dest}` };
+  return { visible: true, text: 'Move current stream' };
 }

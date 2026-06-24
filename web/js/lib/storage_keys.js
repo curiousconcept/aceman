@@ -14,4 +14,5 @@ export const KEYS = Object.freeze({
   PLAYBACK_BUFFER: 'aceman.playbackBuffer',       // in-tab pre-roll seconds
   RESTARTED_AT: 'aceman.restartedAt',             // sessionStorage breadcrumb
   GPU_ACCEL: 'aceman.gpuAccel',                   // GPU acceleration settings JSON
+  STATS_HIDDEN: 'aceman.statsHidden',             // user dismissed the stats line
 });

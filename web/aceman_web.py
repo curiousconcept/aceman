@@ -108,6 +108,7 @@ from aceman.broker_client import (
 )
 from aceman.search import SearchError, _NoRedirectHandler, SearchProxy
 from aceman.favourites import Config, DuplicateCidError, FavStore
+from aceman.history import HistoryStore
 from aceman.desktop_helpers import _desktop_quote_arg
 from aceman.context import RouteContext
 from aceman.http_io import Request, Response
@@ -280,6 +281,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     # Set on the class by main() before serving.
     engine: str = DEFAULT_ENGINE
     store: FavStore | None = None  # None means browser-storage mode
+    history_store: HistoryStore | None = None
     engine_mgr: "EngineBrokerClient | None" = None
     config: "Config | None" = None
     search_proxy: "SearchProxy | None" = None
@@ -354,6 +356,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         "/api/engine/status",
         "/api/engine/image",
         "/api/engine/probe",
+        "/api/engine/memory",
+        "/api/web/memory",
     })
 
     def log_request(self, code="-", size="-"):
@@ -390,7 +394,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
     _ACCESS_LOG_MUTE = (
         "/api/logs",            # logs-tab polling (every 2.5 s while open)
         "/api/engine/status",   # engine status poll (every 4 s)
+        "/api/engine/memory",   # memory polling (every 8 s while playing)
+        "/api/web/memory",      # memory polling (every 8 s while playing)
         "/api/favs/touch",      # bookkeeping write on each Play
+        "/api/history",         # history record on each named Play
     )
 
     def log_message(self, fmt, *args):
@@ -469,8 +476,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
     # /etc/passwd — `name` is matched against keys only, never used to
     # build a filesystem path.
     _STATIC_FILES = {
-        "mpegts.min.js": ("application/javascript", "vendor/mpegts.min.js"),
-        "favicon.ico":   ("image/x-icon", "favicon.ico"),
+        "mpegts.min.js":                          ("application/javascript", "vendor/mpegts.min.js"),
+        "favicon.ico":                            ("image/x-icon",  "favicon.ico"),
+        "curiousconcept-patreon-button-dark.png": ("image/png",     "curiousconcept-patreon-button-dark.png"),
     }
 
     def _handle_static(self, name: str) -> None:
@@ -1157,7 +1165,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             playback_url, command_url = engine_getstream(self.engine, cid)
         except EngineError as e:
-            _log("proxy", "getstream failed for %s…: %s", cid[:8], e)
+            _log("proxy", "getstream failed for %s: %s", cid, e)
             return self._error(502, _sanitize_msg(str(e)))
 
         # Spawn ffmpeg. stderr is piped + drained by a background thread
@@ -1274,10 +1282,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
         if gpu_settings:
-            _log("proxy", "streaming cid=%s… (ffmpeg pid=%d, gpu=%s)",
-                 cid[:8], proc.pid, gpu_settings)
+            _log("proxy", "streaming cid=%s (ffmpeg pid=%d, gpu=%s)",
+                 cid, proc.pid, gpu_settings)
         else:
-            _log("proxy", "streaming cid=%s… (ffmpeg pid=%d)", cid[:8], proc.pid)
+            _log("proxy", "streaming cid=%s (ffmpeg pid=%d)", cid, proc.pid)
         # Observability: track how much we've sent and emit a heartbeat
         # every minute, so a stream that quietly degrades (engine peer
         # loss, swarm thinning) shows up in the log before it dies.
@@ -1329,8 +1337,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     mb = bytes_sent / 1_000_000
                     rate = mb / elapsed if elapsed > 0 else 0.0
                     _log("proxy",
-                         "cid=%s… alive: %.1f MB in %.0fs (%.2f MB/s avg)",
-                         cid[:8], mb, elapsed, rate)
+                         "cid=%s alive: %.1f MB in %.0fs (%.2f MB/s avg)",
+                         cid, mb, elapsed, rate)
                     next_heartbeat = now + 60.0
         finally:
             elapsed = time.monotonic() - start
@@ -1340,9 +1348,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             # killed it.
             rc = proc.poll()
             _log("proxy",
-                 "ended cid=%s… duration=%.0fs bytes=%d (%.2f MB/s) "
+                 "ended cid=%s duration=%.0fs bytes=%d (%.2f MB/s) "
                  "reason='%s' ffmpeg_rc=%s",
-                 cid[:8], elapsed, bytes_sent,
+                 cid, elapsed, bytes_sent,
                  (bytes_sent / 1_000_000 / elapsed) if elapsed > 0 else 0.0,
                  end_reason, rc)
             # If ffmpeg exited on its own (not because we SIGTERMed it
@@ -1350,8 +1358,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             # stderr tail. SIGTERM gives rc == -15; that's normal.
             if rc not in (0, -15, None) and stderr_tail:
                 tail_text = "\n  ".join(list(stderr_tail))
-                _log("proxy", "cid=%s… ffmpeg stderr tail (last %d lines):\n  %s",
-                     cid[:8], len(stderr_tail), tail_text)
+                _log("proxy", "cid=%s ffmpeg stderr tail (last %d lines):\n  %s",
+                     cid, len(stderr_tail), tail_text)
             with Handler._active_lock:
                 if Handler._active_proc is proc:
                     Handler._active_proc = None
@@ -1878,6 +1886,7 @@ def main(argv: list[str] | None = None) -> int:
             if not SQLITE_AVAILABLE else "browser localStorage (--no-sqlite)"
     else:
         Handler.store = FavStore(pathlib.Path(args.db))
+        Handler.history_store = HistoryStore(pathlib.Path(args.db))
         mode_msg = f"sqlite at {args.db}"
 
     Handler.config = Config(pathlib.Path(args.config))
@@ -1911,6 +1920,7 @@ def main(argv: list[str] | None = None) -> int:
     Handler.route_ctx = RouteContext(
         engine=Handler.engine,
         store=Handler.store,
+        history_store=Handler.history_store,
         config=Handler.config,
         config_path=Handler.config_path,
         config_dir=Handler.config_dir,

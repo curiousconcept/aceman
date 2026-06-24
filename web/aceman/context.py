@@ -32,6 +32,7 @@ from .broker_client import (
 )
 from .favourites import Config, FavStore
 from .heartbeat import HeartbeatTracker
+from .history import HistoryStore
 from .search import SearchProxy
 
 
@@ -39,6 +40,7 @@ from .search import SearchProxy
 class RouteContext:
     engine: str = ""
     store: Optional[FavStore] = None
+    history_store: Optional[HistoryStore] = None
     config: Optional[Config] = None
     config_path: Optional[pathlib.Path] = None
     config_dir: Optional[pathlib.Path] = None

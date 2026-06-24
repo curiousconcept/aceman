@@ -22,6 +22,23 @@
   body { font: 14px/1.4 system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem;
          background: var(--bg); color: var(--fg); }
   h1 { font-size: 1.4rem; margin: 0 0 .25rem; text-align: center; }
+  /* Header: ACEMAN stays geometrically centred; Patreon icon pins to the right. */
+  /* ACEMAN stays text-align:center; Patreon pins to the right edge.
+     Font shrinks via clamp() so the title never reaches the button.
+     Below 662px ACEMAN shifts left so it can never collide with Patreon. */
+  .site-header { position: relative; text-align: center; margin-bottom: 1.5rem; }
+  @media (max-width: 662px) { .site-header, .site-header h1 { text-align: left; } }
+  .patreon-link {
+    position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+    display: inline-block; line-height: 0;
+    transition: filter .25s ease, transform .25s ease;
+    filter: drop-shadow(0 0 6px rgba(166,77,255,.55));
+  }
+  .patreon-link img { height: 48px; width: auto; display: block; }
+  .patreon-link:hover {
+    filter: drop-shadow(0 0 10px rgba(166,77,255,.85)) drop-shadow(0 0 22px rgba(166,77,255,.5));
+    transform: translateY(calc(-50% - 2px));
+  }
   .sub { color: var(--mut); font-size: .85rem; margin-bottom: 1.5rem; text-align: center; }
   input[type=text], input[type=search] {
                      width: 100%; padding: .5rem; box-sizing: border-box;
@@ -232,6 +249,7 @@
     padding: .35rem .75rem; cursor: pointer; color: var(--fg);
     white-space: nowrap;
   }
+  .aceman-select-option:hover,
   .aceman-select-option.focused { background: var(--hover); color: #000; }
   .aceman-select-option[aria-selected="true"] {
     background: rgba(181,146,56,.18);
@@ -274,7 +292,7 @@
   /* Player card overrides the generic centering so "Play in" and
      "Buffer" share the same left edge (5.5 rem label column).
      show-all-row uses margin-left:auto to sit at the row's right end. */
-  #player-card .field:first-of-type { justify-content: flex-start; flex-wrap: nowrap; }
+  #player-card .field:first-of-type { justify-content: flex-start; flex-wrap: wrap; }
   #player-card .field:first-of-type .field-label { min-width: 5.5rem; flex-shrink: 0; }
   #player-card .field:first-of-type select { min-width: 0; flex-shrink: 1; }
   /* show-all label sits at the right; must not shrink to invisibility */
@@ -307,11 +325,11 @@
     color: var(--mut);
   }
   .status.ok { color: #6c6; } .status.bad { color: var(--err); }
-  .err { color: var(--err); margin: .5rem 0; }
+  .err { color: var(--err); margin: .5rem 0; text-align: center; }
   /* ACEMAN wordmark + optional glow. `.glow` class is toggled by the
      little ✨ button next to it; preference persists in localStorage. */
   .aceman {
-    font: 900 64px/1 "Helvetica Neue", Arial, sans-serif;
+    font: 900 clamp(36px, 8.5vw, 64px)/1 "Helvetica Neue", Arial, sans-serif;
     letter-spacing: .04em;
     color: #39FF6A;
     cursor: pointer;
@@ -417,10 +435,12 @@
   #play-row-wrap { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: .5rem; margin: .5rem 0; }
   /* play-row is nowrap internally; parent handles vertical margin. */
   .play-row { flex-wrap: nowrap; justify-content: center; margin: 0; }
-  #cid-input { width: 39ch; max-width: 39ch; flex: 0 1 auto; min-width: 12ch; padding-top: .3rem; padding-bottom: .3rem; }
+  #cid-input { width: 41ch; max-width: 41ch; flex: 0 1 auto; min-width: 12ch; padding-top: .3rem; padding-bottom: .3rem; }
   /* Symmetric small padding keeps glyphs centred while staying visually tight. */
   #cid-clear    { padding: .3rem .15rem; }
   #restream-btn { padding: .3rem .15rem; }
+  /* Match vertical padding of the adjacent icon buttons. */
+  #save-btn { padding: .3rem .8rem; }
 
   /* Corner label: a small "fieldset legend"-style tag in the top-left
      of a card. Sits half-overlapping the card border so it reads as a
@@ -521,18 +541,37 @@
   .fav:hover { background: var(--hover); }
   .fav:hover .fav-name,
   .fav:hover .fav-last,
-  .fav:hover .fav-menu-btn { color: #000; opacity: 1; font-weight: 600; }
+  .fav:hover button.fav-menu-btn { color: #000; opacity: 1; font-weight: 600; }
   .fav:last-child { box-shadow: none; }
   /* Rows centred as a block; text left-aligns within each row. */
   #fav-list { display: flex; flex-direction: column; align-items: center; }
   .fav { width: min(100%, 28rem); }
+  /* Fav-list rows fill the #fav-inner constraint (40ch at 14px). */
+  #fav-list .fav { width: 100%; }
+  /* Single container governs all fav-card content width so ch is
+     always computed at the card's 14px font — not at .pager's .8rem. */
+  #fav-inner { max-width: 40ch; margin: 0 auto; }
+  #search-section { overflow: hidden; }
+  #search-results { display: flex; flex-direction: column; align-items: center; }
+  /* Section width is set by JS to match the play row exactly; rows must fill it fully. */
+  #search-results .fav { width: 100%; }
+  #history-section { overflow: hidden; }
+  #history-list { display: flex; flex-direction: column; align-items: center; }
+  #history-list .fav { width: 100%; }
+  /* Floating history dropdown — fixed so it clears card overflow. */
+  #history-dropdown {
+    position: fixed; z-index: 200;
+    background: #1a1a1a; border: 1px solid var(--hover); border-radius: 4px;
+    box-shadow: 0 6px 14px rgba(0,0,0,.45);
+    padding: .25rem 0; min-width: 22rem; max-width: 38rem;
+  }
   .fav-name-wrap { flex: 1; min-width: 0; display: flex; align-items: baseline;
                    gap: .5rem; cursor: pointer; }
   .fav-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* ⋮ context menu */
   .fav-menu-wrap { position: relative; flex-shrink: 0; }
-  .fav-menu-btn { padding: .2rem .3rem; color: var(--mut); opacity: .4; line-height: 1; }
-  .fav:hover .fav-menu-btn { opacity: 1; }
+  button.fav-menu-btn { padding: .2rem 1rem; color: var(--mut); opacity: .65; line-height: 1; }
+  .fav:hover button.fav-menu-btn { opacity: 1; }
   .fav-menu { position: absolute; right: 0; top: calc(100% + 2px); min-width: 8rem; z-index: 100; }
   .fav-menu-sep { border-top: 1px solid #333; margin: .25rem 0; }
   .fav-menu-delete { color: #c0392b; }
@@ -643,7 +682,10 @@
 
   /* Tooltip-style hint shown next to disabled buttons */
   .gate-hint { color: var(--mut); font-size: .8rem; margin-left: .5rem; }
+  #play-hint { margin-left: 0; text-align: center; display: block; }
   .gate-hint.warn { color: var(--err); }
+  #pb-video-status { cursor: pointer; transition: opacity .15s; }
+  #pb-video-status:hover { opacity: .45; }
 
   /* Now-playing channel label — lives inside the Playback card-label.
      The card-label is absolutely positioned at the top edge, so cap it

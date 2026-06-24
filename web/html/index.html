@@ -133,11 +133,17 @@
   </div>
 </div>
 
-<h1 style="margin: 0 0 1.5rem; line-height: 1">
-  <span id="aceman-title" class="aceman" role="button" tabindex="0"
-        title="Click to toggle glow"
-        aria-label="Toggle glow effect">ACEMAN</span>
-</h1>
+<div class="site-header">
+  <h1 style="margin: 0; line-height: 1">
+    <span id="aceman-title" class="aceman" role="button" tabindex="0"
+          title="Click to toggle glow"
+          aria-label="Toggle glow effect">ACEMAN</span>
+  </h1>
+  <a class="patreon-link" href="https://www.patreon.com/curiousconcept"
+     target="_blank" rel="noopener" title="Support on Patreon">
+    <img src="/static/curiousconcept-patreon-button-dark.png" alt="Support on Patreon">
+  </a>
+</div>
 
 <div class="main">
   <!-- Source order matches narrow-screen display order:
@@ -173,36 +179,42 @@
          40-hex cid or acestream:// URL) AND nothing is actively
          playing in this tab — when something IS playing, the video
          takes the room instead. -->
+    <div id="history-section" style="display:none">
+      <div id="history-list"></div>
+    </div>
     <div id="search-section" style="display:none">
-      <div id="search-results"></div>
       <div class="pager" id="search-pager" style="display:none">
         <button id="search-prev">‹ Prev</button>
         <span class="status" id="search-info"></span>
         <button id="search-next">Next ›</button>
       </div>
+      <div id="search-results"></div>
     </div>
     <div id="now-playing" style="display:none">
       <video id="pb-video" controls playsinline
              style="display:none; width:100%; max-height:55vh; background:#000; margin:.5rem 0"></video>
       <div class="row" style="justify-content: center; gap: .5rem; flex-wrap: wrap">
-        <div class="gate-hint" id="pb-video-status" style="margin: 0; min-width: 0; text-align: center"></div>
+        <div class="gate-hint" id="pb-video-status" style="margin: 0; min-width: 0; text-align: center" title="Click to hide stats"></div>
+        <button id="show-stats-btn" style="display:none">Display Stats</button>
       </div>
     </div>
   </div>
 
   <div class="card has-card-label" id="favs-card">
     <span class="card-label">★ Favourites <span id="storage-badge" class="badge has-tooltip" style="margin-left:.3rem"></span></span>
-    <div class="row">
-      <input type="text" id="fav-search" placeholder="Search…">
-    </div>
-    <div class="pager" id="fav-pager" style="display:none">
-      <button id="fav-prev">‹ Prev</button>
-      <span class="status" id="fav-info"></span>
-      <button id="fav-next">Next ›</button>
-    </div>
-    <div id="fav-list"></div>
-    <div id="fav-empty" class="status" style="display:none">
-      No favourites yet — play something and click "Save as favourite".
+    <div id="fav-inner">
+      <div class="row">
+        <input type="text" id="fav-search" placeholder="Search…">
+      </div>
+      <div class="pager" id="fav-pager" style="display:none">
+        <button id="fav-prev">‹ Prev</button>
+        <span class="status" id="fav-info"></span>
+        <button id="fav-next">Next ›</button>
+      </div>
+      <div id="fav-list"></div>
+      <div id="fav-empty" class="status" style="display:none">
+        No favourites yet — play something and click "Save as favourite".
+      </div>
     </div>
   </div>
 
@@ -213,8 +225,8 @@
         <span class="field-label">Play in</span>
         <select id="playback-target" disabled><option>…</option></select>
         <button id="playback-move" style="display:none">Move current stream here</button>
-        <label id="show-all-row" style="display:flex; align-items:center; gap:.3rem; white-space:nowrap; margin-left:auto">
-          <input type="checkbox" id="show-all-browsers"> <span class="tip" data-tip="By default we hide browser entries that look like the one you're already in, since the browser's UA string can't distinguish, e.g., system Firefox from Flatpak Firefox. Turn this on to see every detected install — useful only when you specifically want to switch between two installs of the same browser.">Show all browser installs</span>
+        <label id="show-all-row" style="display:flex; align-items:center; gap:.3rem; white-space:nowrap">
+          <input type="checkbox" id="show-all-browsers"> <span class="tip" data-tip="By default duplicate installs are hidden: same-name browsers (UA can't distinguish system vs Flatpak Firefox) and same-name players (e.g. mpv system + mpv Flatpak) each show only one entry. Turn this on to see every detected install.">Show all installs</span>
         </label>
       </div>
       <div class="field" id="buffer-field"
