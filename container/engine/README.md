@@ -6,15 +6,22 @@ tarball it copies, and the `run-container.sh` launcher.
 
 ## Provide the engine tarball
 
-The Ace Stream Linux tarball is **not** in git — you supply it:
+The Ace Stream Linux tarball is **not** in git — it's proprietary, so we
+don't redistribute it. You download it yourself:
+
+> **https://docs.acestream.net/products/#linux**
+
+Pick the **Linux → Ubuntu, amd64 / py3.10** build (the exact filename and
+version may change over time), e.g.:
 
 ```
 acestream_3.2.11_ubuntu_22.04_x86_64_py3.10.tar.gz
   → save as container/engine/dist/engine.tar.gz
 ```
 
-Download from `acestream.media`. There is no upstream signature, so
-record your own SHA-256 and keep it.
+There is no upstream signature, so record your own SHA-256 and keep it.
+The repo ships `engine.tar.gz.sha256` as the author's last-checked hash —
+compare yours against it to confirm you grabbed the same build.
 
 ## Build
 

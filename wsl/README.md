@@ -32,15 +32,27 @@ Double-click **`install.bat`** and approve the UAC prompts. It:
 
 ## 2. Provide the engine tarball (one-time, required to play)
 
-The Ace Stream engine tarball isn't shipped in the repo. The web UI runs
-without it, but **playback needs it**. Inside WSL, drop your
-`engine.tar.gz` into the clone:
+The Ace Stream engine tarball isn't shipped in the repo (it's
+proprietary). The web UI runs without it, but **playback needs it**.
 
-```
-~/Projects/aceman/container/engine/dist/engine.tar.gz
-```
+1. Download it from **https://docs.acestream.net/products/#linux** —
+   the **Linux → Ubuntu, amd64 / py3.10** build.
+2. Rename it to `engine.tar.gz` and place it in the clone at:
 
-See [`../container/engine/README.md`](../container/engine/README.md).
+   ```
+   ~/Projects/aceman/container/engine/dist/engine.tar.gz
+   ```
+
+   From Windows you can reach that folder in Explorer at:
+
+   ```
+   \\wsl.localhost\Ubuntu\home\ace\Projects\aceman\container\engine\dist\
+   ```
+
+   (paste it into the address bar; drop the file in, named `engine.tar.gz`).
+
+See [`../container/engine/README.md`](../container/engine/README.md) for
+how to verify it against the `.sha256`.
 
 ## 3. Launch — `run.bat` (or the Desktop shortcut)
 

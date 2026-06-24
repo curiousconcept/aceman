@@ -1,7 +1,9 @@
-# Engine binary — the README points users to acestream.media to fetch
-# this themselves. Keeping it out of git matches that instruction and
-# keeps the repo small; the .sha256 sibling stays so users can verify.
-dist/engine.tar.gz
+# Engine binary — proprietary Ace Stream tarball; users fetch it
+# themselves from https://docs.acestream.net/products/#linux (Linux →
+# Ubuntu amd64 / py3.10 build). Keeping it out of git avoids
+# redistributing proprietary software and keeps the repo small; the
+# .sha256 sibling stays so users can verify their download.
+container/engine/dist/engine.tar.gz
 
 # Claude Code tooling state (per-clone, not source).
 .claude/
