@@ -22,7 +22,7 @@ touches `podman` or anything host-related directly.
 | Web UI (browser playback)               |  ✅   | ✅ (served to Windows)   |  —    |
 | External-player CLI (`aceman` + VLC/mpv)|  ✅   | ✅ via `get_url_stream` → Windows VLC/mpv (GPU) |  —    |
 | `acestream://` desktop handler          |  ✅   | ✅ opt-in (`register-handler`) |  —    |
-| GPU / VA-API acceleration               |  ✅   | encode ❌ (no VA-API in WSL) · decode ✅ (Windows browser/player) |  —    |
+| GPU / VA-API acceleration               |  ✅   | browser: server transcode on CPU (no VA-API in WSL) but decode on GPU · external player: no transcode → full Windows GPU |  —    |
 | One-click installer                     |  manual |  ✅ `wsl/install.bat`   |  —    |
 
 ## Quick start
