@@ -149,6 +149,7 @@ detach_flag=()
 # enabling it is the user's explicit, deliberate choice — not the default.
 telemetry_block_flags=()
 if [ "${ACE_BLOCK_TELEMETRY:-0}" = "1" ]; then
+    echo "run-container.sh: ACE_BLOCK_TELEMETRY=1 — blocking Ace Stream telemetry/stats hosts (stats/awstats.acestream.{net,media} null-routed)" >&2
     telemetry_block_flags=(
         --add-host stats.acestream.net:0.0.0.0     --add-host stats.acestream.net:::
         --add-host stats.acestream.media:0.0.0.0   --add-host stats.acestream.media:::
