@@ -6,6 +6,14 @@ Trade-off: higher cache = smoother playback but later to start. The
 "nothing happens for a minute then it plays" feeling is exactly what 60 s
 of network caching looks like.
 
+> **The web UI's "Buffer" slider does this for you.** Setting it (e.g.
+> 15 s) drives the in-tab browser player *and* — because the value is
+> saved server-side as `config.json:buffer_secs` — the **external player**:
+> the `aceman` CLI translates it into `--network-caching` (VLC) or
+> `--cache-secs` (mpv) automatically, so you don't have to hunt through
+> their menus. The manual flags below are only needed if you launch a
+> player yourself, outside aceman.
+
 ## VLC
 
 GUI path (where the *60 000 ms* setting lives):

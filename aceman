@@ -943,6 +943,27 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# Buffer pass-through. The web UI's "Buffer" slider is saved server-side as
+# config.json:buffer_secs. Apply the same seconds to the external player's
+# network cache so a 15s buffer set in the browser also applies to VLC/mpv
+# — no hunting through their preference menus. P2P live streams jitter; a
+# few seconds of cache rides that out. Only system/Flatpak vlc & mpv have
+# known flags; a custom $ACE_PLAYER is left untouched.
+_buf="$(_resolve_cfg_string buffer_secs || true)"
+case "$_buf" in ''|*[!0-9]*) _buf=0 ;; esac
+if [ "$_buf" -gt 0 ]; then
+    case "$PLAYER" in
+        *mpv*)
+            PLAYER_CMD+=(--cache=yes --cache-secs="$_buf" \
+                        --demuxer-readahead-secs="$_buf")
+            ;;
+        *vlc*)
+            _ms=$(( _buf * 1000 ))
+            PLAYER_CMD+=(--network-caching="$_ms" --live-caching="$_ms")
+            ;;
+    esac
+fi
+
 echo "aceman: playing $playback_url with ${PLAYER_CMD[*]}"
 # Background the player + `wait` so SIGTERM to this script (sent by a
 # later aceman invocation's acquire_active_session) interrupts the

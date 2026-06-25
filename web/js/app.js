@@ -2765,10 +2765,27 @@ async function toggleDesktopEntry() {
       const storedVal = parseInt(localStorage.getItem(KEYS.PLAYBACK_BUFFER) || '0', 10);
       bufSlider.value = String(Math.min(Math.max(storedVal, 0), 60));
       if (bufOut) bufOut.textContent = bufferLabel(bufSlider.value, 60);
+      // Seed the server from localStorage on load, so the aceman CLI's
+      // buffer_secs is never stale even when the slider isn't touched this
+      // session. Fire-and-forget; harmless no-op if server config is off.
+      api('/api/config', {
+        method: 'POST',
+        body: JSON.stringify({ buffer_secs: Math.min(Math.max(storedVal, 0), 60) }),
+      }).catch(() => {});
       bufSlider.oninput = () => {
         const n = Math.min(Math.max(parseInt(bufSlider.value, 10), 0), 60);
         localStorage.setItem(KEYS.PLAYBACK_BUFFER, String(n));
         if (bufOut) bufOut.textContent = bufferLabel(n, 60);
+      };
+      // On release, persist server-side too (config.json:buffer_secs) so the
+      // aceman CLI applies the same seconds to the external player's network
+      // cache. Fire-and-forget: localStorage already drives in-tab playback,
+      // and a disabled server config (404) is a harmless no-op here.
+      bufSlider.onchange = () => {
+        const n = Math.min(Math.max(parseInt(bufSlider.value, 10), 0), 60);
+        api('/api/config', {
+          method: 'POST', body: JSON.stringify({ buffer_secs: n }),
+        }).catch(() => {});
       };
     }
   }

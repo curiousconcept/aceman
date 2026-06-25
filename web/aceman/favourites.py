@@ -54,6 +54,9 @@ class Config:
         "playback_mode": str,
         "default_browser": str,
         "default_browser_source": str,
+        # Buffer slider (seconds). Drives the in-tab pre-roll AND, via the
+        # aceman CLI, the external player's network cache (VLC/mpv).
+        "buffer_secs": int,
     }
 
     def __init__(self, path: pathlib.Path):
@@ -66,6 +69,7 @@ class Config:
             "playback_mode": "external",
             "default_browser": "",
             "default_browser_source": "",
+            "buffer_secs": 0,
         }
         if path.is_file():
             try:
