@@ -171,3 +171,13 @@ aceman's own code is **MIT** — see [`LICENSE`](LICENSE). Exceptions:
   yourself and it's governed by Ace Stream's own terms.
 - **`web/vendor/mpegts.min.js`** — bundled third-party library under
   **Apache-2.0** (see its header and [`web/vendor/README.md`](web/vendor/README.md)).
+
+## Disclaimer
+
+This project is an independent, open-source wrapper and automation utility.
+It is **not affiliated with, endorsed by, or associated with Ace Stream**,
+and it does **not bundle or distribute any proprietary software binaries or
+copyrighted material** — the Ace Stream engine is downloaded by the user
+from the official source, and any content you stream is your own
+responsibility. "Ace Stream" and related marks belong to their respective
+owners.
