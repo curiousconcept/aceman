@@ -12,7 +12,9 @@ watch **History**, and built-in stream **Search** (a server-side proxy to
 `search-ace.stream`). A host-side allow-list broker means the web never
 touches `podman` or anything host-related directly.
 
-[Support on Patreon](https://www.patreon.com/cw/curiousconcept)
+<p align="center">
+  <a href="https://www.patreon.com/cw/curiousconcept"><img src="web/curiousconcept-patreon-button-dark.png" alt="Support on Patreon" width="240"></a>
+</p>
 
 ## Capabilities by OS
 
