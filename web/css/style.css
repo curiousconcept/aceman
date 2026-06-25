@@ -748,16 +748,26 @@
      showNotice() in app.js. Reusable for any future notification — not
      specific to the restart reminder that first used it. Mustard accent to
      match the UI; add a `.notice--<variant>` modifier for other palettes. */
-  .notice-host { display: block; }
+  /* Overlay host: fixed at top-centre so notices float over content and
+     NEVER shift the page layout. Sits just under modals (z-index:100).
+     pointer-events:none lets clicks fall through the empty gaps; each
+     .notice re-enables them for itself. */
+  .notice-host {
+    position: fixed; top: .6rem; left: 50%; transform: translateX(-50%);
+    z-index: 90; width: max-content; max-width: min(92vw, 640px);
+    display: flex; flex-direction: column; gap: .5rem;
+    pointer-events: none;
+  }
   .notice {
+    pointer-events: auto;
     display: flex; align-items: center; justify-content: center;
     flex-wrap: wrap; gap: .5rem .8rem;
-    margin: 0 0 1.2rem; padding: .5rem .8rem;
+    margin: 0; padding: .5rem .8rem;
     border: 1px solid var(--acc); border-radius: 8px;
-    background: rgba(181, 146, 56, .14); color: var(--fg);
+    background: rgba(28, 24, 12, .96); color: var(--fg);
     font-size: .9rem;
+    box-shadow: 0 6px 22px rgba(0, 0, 0, .5);
   }
-  .notice + .notice { margin-top: -.6rem; }   /* tighten stacked notices */
   .notice-msg { text-align: center; }
   .notice-actions { display: inline-flex; gap: .4rem; align-items: center; }
   .notice-btn {
@@ -771,7 +781,7 @@
   }
   .notice-x:hover { color: var(--fg); }
   /* Variant palettes (optional): .notice--danger / .notice--go */
-  .notice--danger { border-color: var(--danger); background: rgba(204, 51, 51, .12); }
+  .notice--danger { border-color: var(--danger); background: rgba(40, 16, 16, .96); }
   .notice--danger .notice-btn { background: var(--danger); color: #fff; }
-  .notice--go { border-color: var(--go); background: rgba(102, 204, 102, .12); }
+  .notice--go { border-color: var(--go); background: rgba(16, 34, 16, .96); }
   .notice--go .notice-btn { background: var(--go); color: #111; }
