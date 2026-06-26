@@ -7,10 +7,9 @@
 // and pagination live in lib/ and are unit-tested; this module is the
 // DOM wiring around them.
 //
-// hideHistorySection (history) + allFavs / instaSave / updateSaveButton
-// (favourites) are forward imports from sibling domains. Transitional
-// back-refs into app.js (until playback is its own domain):
-// alignSearchToInput (shared search/history layout helper) + play.
+// All cross-module deps are forward imports from sibling domains:
+// hideHistorySection (history), allFavs / instaSave / updateSaveButton
+// (favourites), play + alignSearchToInput (playback).
 
 import { $, showError, showBusy, hideBusy } from '../../shared/dom.js';
 import { api } from '../../shared/api.js';
@@ -22,7 +21,7 @@ import { findFavouriteByCid } from '../../lib/favourites/favourite_lookup.js';
 import { hideHistorySection } from '../history/history.js';
 import { allFavs, instaSave, updateSaveButton } from '../favourites/favourites.js';
 import { play } from '../playback/playback.js';
-import { alignSearchToInput } from '../../app.js';
+import { alignSearchToInput } from '../playback/playback.js';
 
 let lastSearchQuery = '';
 // Pagination of search results. Mirrors the favourites pager — same

@@ -8,17 +8,17 @@
 // The UTC→local timestamp formatting is pure and unit-tested in
 // lib/sqlite_time.js; this module is the DOM wiring.
 //
-// allFavs + instaSave are forward imports from the favourites domain.
-// Transitional back-refs into app.js (until playback is its own domain):
-// mode (storage mode), play (playback), alignSearchToInput (shared layout).
+// All cross-module deps are forward imports: allFavs + instaSave
+// (favourites), play + alignSearchToInput (playback), mode (shared
+// runtime flags).
 
 import { $, showBusy, hideBusy } from '../../shared/dom.js';
 import { api } from '../../shared/api.js';
 import { formatSqliteUtcToLocal } from '../../lib/sqlite_time.js';
 import { findFavouriteByCid } from '../../lib/favourites/favourite_lookup.js';
 import { allFavs, instaSave } from '../favourites/favourites.js';
-import { play } from '../playback/playback.js';
-import { alignSearchToInput, mode } from '../../app.js';
+import { play, alignSearchToInput } from '../playback/playback.js';
+import { mode } from '../../shared/runtime.js';
 
 let _historyDropdown = null;
 let _historyTimer = null;

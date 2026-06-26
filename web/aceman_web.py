@@ -228,8 +228,8 @@ def _bundle_js() -> str:
     #   2. js/shared/**  — technical substrate + generic UI (dom, api,
     #                      dropdown, notice); depends on lib.
     #   3. js/domains/** — business slices (gpu, image, desktop, …); depend
-    #                      on lib + shared, are depended on by app.js.
-    #   4. js/app.js     — the DOM-wiring entry + init IIFE; goes last.
+    #                      on lib + shared, are depended on by main.js.
+    #   4. js/main.js    — the bootstrap: wires the DOM + init IIFE; last.
     # rglob (not glob) so grouped subdirectories under each dir are picked
     # up (lib/playback/, domains/gpu/, …).
     lib_dir = _HERE / "js" / "lib"
@@ -261,7 +261,7 @@ def _bundle_js() -> str:
     for base, prefix in ((lib_dir, "lib"), (shared_dir, "shared"), (domains_dir, "domains")):
         for p in (sorted(base.rglob("*.js")) if base.exists() else []):
             _add(p.read_text(encoding="utf-8"), f"{prefix}/{p.relative_to(base)}")
-    _add((_HERE / "js" / "app.js").read_text(encoding="utf-8"), "app.js")
+    _add((_HERE / "js" / "main.js").read_text(encoding="utf-8"), "main.js")
     # Wrap the whole thing in an IIFE so module-scope variables don't
     # leak into window. Mirrors what ESM gives the test runner.
     return "(() => {\n" + "\n".join(parts) + "\n})();"

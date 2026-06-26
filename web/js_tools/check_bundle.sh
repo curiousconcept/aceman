@@ -2,7 +2,7 @@
 # Verify the BROWSER bundle — the artifact aceman_web actually serves.
 #
 # The browser does NOT load ES modules: aceman_web._bundle_js() concatenates
-# js/lib/** + js/shared/** + js/domains/** + js/app.js into one classic-script IIFE, stripping
+# js/lib/** + js/shared/** + js/domains/** + js/main.js into one classic-script IIFE, stripping
 # import/export. So an ESM-only check (node --test, smoke_import on individual
 # modules) can pass while the bundle is broken (e.g. a file not picked up by
 # the bundler → a stripped import leaves a name undefined → ReferenceError).

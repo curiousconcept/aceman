@@ -15,13 +15,14 @@
 // Forward imports from sibling domains: favourites (allFavs, loadFavs,
 // updateSaveButton, browserFavs), search (refreshSearchSection,
 // refreshClearButton), detection (player/browser lists), gpu (param
-// builder + encode label), notice (dismissNotice). Transitional back-refs
-// into app.js: mode + isWslMode (storage/WSL config, set by init) and
-// alignSearchToInput (shared search/history layout helper).
+// builder + encode label). Plus the generic shared/notice component and
+// the shared/runtime flags (mode, isWslMode). This domain owns the live
+// stream state (current, livePlaybackTarget, cfg) + the search/history
+// layout helper (alignSearchToInput, used by those sibling cards).
 
 import { $, showError, showConfirm, showBusy, hideBusy } from '../../shared/dom.js';
 import { api } from '../../shared/api.js';
-import { dismissNotice } from '../../shared/notice.js';
+import { showNotice, dismissNotice } from '../../shared/notice.js';
 import { parseId } from '../../lib/playback/content_id_parser.js';
 import { EngineStatusState } from '../../lib/engine/engine_state.js';
 import { encodeTarget, isExternal } from '../../lib/playback/playback_target.js';
@@ -41,19 +42,74 @@ import { allFavs, loadFavs, updateSaveButton, browserFavs } from '../favourites/
 import { refreshSearchSection, refreshClearButton } from '../search/search.js';
 import { detectedPlayers, detectedBrowsers, _currentBrowserName } from './detection.js';
 import { buildGpuParams, gpuEncodeLabel } from '../gpu/gpu.js';
-import { mode, isWslMode, alignSearchToInput } from '../../app.js';
+import { mode, isWslMode } from '../../shared/runtime.js';
 
 // The active stream, just enough to drive the Save button: we no longer
 // own the session (the host shell does via acestream:// dispatch), so
 // there's no playback_url / command_url to remember.
 export let current = null;     // { cid, name }
+// setCurrent lets the bootstrap rehydrate `current` after a reload
+// without violating the single-writer rule (imported bindings are
+// read-only; only this module reassigns).
+export function setCurrent(value) { current = value; }
 // Where the active stream is actually playing, as a dropdown-value string
 // ('browser' | 'external|name|source' | ''). Set when play() fires, NOT
 // when the dropdown changes — the dropdown is the user's pending intent,
 // this is reality. The "Move current stream here" button compares the two.
 export let livePlaybackTarget = '';
 
+// Server config blob (/api/config). The bootstrap loads it via setCfg.
 export let cfg = {};
+export function setCfg(value) { cfg = value; }
+
+// Aligns the search-results / history dropdowns (and the play-hint) to
+// the Watch input's box — they position themselves relative to the
+// play-row, which this domain owns. Used by search, history, the engine
+// play-gate, and the init ResizeObserver.
+export function alignSearchToInput() {
+  const playRow = document.querySelector('.play-row');
+  if (!playRow) return;
+  const section = $('search-section');
+  const historySec = $('history-section');
+  const hint = $('play-hint');
+  const card = (section || hint || historySec) &&
+    (section || hint || historySec).closest('.card');
+  if (!card) return;
+  const rowRect = playRow.getBoundingClientRect();
+  const cardRect = card.getBoundingClientRect();
+  const cs = getComputedStyle(card);
+  const padLeft = parseFloat(cs.paddingLeft);
+  const padRight = parseFloat(cs.paddingRight);
+  const cardContentW = cardRect.width - padLeft - padRight;
+  const rawMl = Math.max(0, rowRect.left - cardRect.left - padLeft);
+  const w = Math.min(rowRect.width, Math.max(0, cardContentW - rawMl)) + 'px';
+  const ml = rawMl + 'px';
+  if (section && section.style.display !== 'none') {
+    section.style.width = w;
+    section.style.marginLeft = ml;
+  }
+  if (historySec && historySec.style.display !== 'none') {
+    historySec.style.width = w;
+    historySec.style.marginLeft = ml;
+  }
+  if (hint) {
+    hint.style.width = w;
+    hint.style.marginLeft = ml;
+  }
+}
+
+// Reminder that a setting change (buffer / GPU) only applies on the next
+// stream start. Shown only while something is live — nothing to restart
+// otherwise. Domain-specific notice built on the generic shared component.
+export function notifyRestartNeeded() {
+  if (!livePlaybackTarget) return;
+  showNotice({
+    id: 'restart-needed',
+    message: 'Setting changed — restart the stream for it to take effect.',
+    actionLabel: '↺ Restart stream',
+    onAction: () => { dismissNotice('restart-needed'); restartStream(); },
+  });
+}
 
 export function clearNowPlaying() {
   stopInBrowserPlayback();

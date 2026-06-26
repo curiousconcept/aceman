@@ -9,7 +9,7 @@
 import { $ } from '../../shared/dom.js';
 import { api } from '../../shared/api.js';
 import { mountAcemanSelect } from '../../shared/dropdown.js';
-import { notifyRestartNeeded } from '../../shared/notice.js';
+import { notifyRestartNeeded } from '../playback/playback.js';
 import { KEYS } from '../../lib/storage_keys.js';
 import { gpuQueryParams } from '../../lib/gpu/gpu_params.js';
 

@@ -47,7 +47,7 @@
 </div>
 
 <!-- Generic confirmation modal. showConfirm({title, message, confirmText,
-     danger}) in app.js fills it in and resolves with the user's choice.
+     danger}) in shared/dom.js fills it in and resolves with the user's choice.
      Replaces native browser confirm() dialogs (which paint in OS-native
      colours we can't theme). -->
 <div id="confirm-modal" class="modal-backdrop" style="display:none" role="dialog" aria-modal="true">
@@ -146,7 +146,7 @@
 </div>
 
 <!-- Host for generic, dismissible top notices. Any "heads-up (+ optional
-     action)" message is rendered here by showNotice() in app.js. -->
+     action)" message is rendered here by showNotice() in shared/notice.js. -->
 <div id="notice-host" class="notice-host"></div>
 
 <div class="main">

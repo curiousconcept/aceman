@@ -1,4 +1,5 @@
-// app.js is loaded as an ES module from index.html. Pure helpers live
+// main.js is the bootstrap, loaded as an ES module from index.html. It
+// wires the DOM to the domains and runs init. Pure helpers live
 // under ./lib/ and are unit-tested under web/js_tests/. Everything in
 // THIS file is the wiring between the DOM, the broker, and those
 // helpers — there's nothing here a JS test should be poking at
@@ -8,7 +9,6 @@ import { $, showError, showConfirm, showBusy, hideBusy } from './shared/dom.js';
 import { api } from './shared/api.js';
 import { mountAcemanSelect } from './shared/dropdown.js';
 import { openResetModal, closeResetModal, runFactoryReset } from './domains/factory-reset/factory_reset.js';
-import { notifyRestartNeeded } from './shared/notice.js';
 import { initGpuCard, buildGpuParams, gpuEncodeLabel } from './domains/gpu/gpu.js';
 import { refreshImageStatus, installImage, uninstallImage } from './domains/image/image.js';
 import { refreshDesktopEntry, toggleDesktopEntry } from './domains/desktop/desktop_entry.js';
@@ -30,51 +30,9 @@ import { current, livePlaybackTarget, cfg, play, renderPlaybackTargets,
          restartStream, refreshEngineStatus, engineState, clearNowPlaying,
          setTabTitle, setNowPlayingName, persistPlaybackTarget, waitForEngineReady,
          waitForBackend, refreshPlayerRowAlignment, movePlaybackToSelection,
-         toggleEngine, saveAutostart } from './domains/playback/playback.js';
-
-export let mode = 'browser';   // 'sqlite' or 'browser', set by /api/storage-mode
-// WSL mode: the page is served from a Linux WSL distro to a Windows
-// browser via the WSL guest IP. Set by /api/storage-mode at bootstrap.
-// When true, Linux-desktop-only UI (App-launcher card + acestream://
-// scheme handler) is hidden — none of it can take effect from a
-// Windows browser session.
-export let isWslMode = false;
-
-// ---- search / history layout helper ------------------------------------
-// Aligns the search-results / history dropdowns (and the play-hint) to the
-// Watch input's box. Shared by search (domains/search), history, and the
-// engine play-gate; stays here until those share a layout home.
-export function alignSearchToInput() {
-  const playRow = document.querySelector('.play-row');
-  if (!playRow) return;
-  const section = $('search-section');
-  const historySec = $('history-section');
-  const hint = $('play-hint');
-  const card = (section || hint || historySec) &&
-    (section || hint || historySec).closest('.card');
-  if (!card) return;
-  const rowRect = playRow.getBoundingClientRect();
-  const cardRect = card.getBoundingClientRect();
-  const cs = getComputedStyle(card);
-  const padLeft = parseFloat(cs.paddingLeft);
-  const padRight = parseFloat(cs.paddingRight);
-  const cardContentW = cardRect.width - padLeft - padRight;
-  const rawMl = Math.max(0, rowRect.left - cardRect.left - padLeft);
-  const w = Math.min(rowRect.width, Math.max(0, cardContentW - rawMl)) + 'px';
-  const ml = rawMl + 'px';
-  if (section && section.style.display !== 'none') {
-    section.style.width = w;
-    section.style.marginLeft = ml;
-  }
-  if (historySec && historySec.style.display !== 'none') {
-    historySec.style.width = w;
-    historySec.style.marginLeft = ml;
-  }
-  if (hint) {
-    hint.style.width = w;
-    hint.style.marginLeft = ml;
-  }
-}
+         toggleEngine, saveAutostart, notifyRestartNeeded,
+         alignSearchToInput, setCfg, setCurrent } from './domains/playback/playback.js';
+import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
 
 // ---- init --------------------------------------------------------------
 (async () => {
@@ -115,7 +73,7 @@ export function alignSearchToInput() {
   await waitForBackend();
   try {
     const cfg = await api('/api/storage-mode');
-    mode = cfg.mode;
+    setMode(cfg.mode);
     // Engine URL surfaces as a hover tooltip on the Engine corner-label
     // (with the .has-tooltip dashed underline as the visual hint).
     if (cfg.engine) $('engine-label').title = cfg.engine;
@@ -139,7 +97,7 @@ export function alignSearchToInput() {
     $('storage-badge').textContent = badge.text;
     $('storage-badge').title = badge.title;
     // Hide Linux-desktop-only affordances when served to a Windows-side browser.
-    isWslMode = !!cfg.is_wsl;
+    setWslMode(!!cfg.is_wsl);
     if (isWslMode) {
       // App launcher row: no xdg-mime or .desktop on Windows
       const desktopRow = $('desktop-row');
@@ -163,7 +121,7 @@ export function alignSearchToInput() {
   }
 
   try {
-    cfg = await api('/api/config');
+    setCfg(await api('/api/config'));
     $('autostart').checked = !!cfg.engine_autostart;
   } catch (_) { /* config endpoint may be disabled */ }
 
@@ -725,7 +683,7 @@ export function alignSearchToInput() {
         const { name, sub } =
             resolveDisplayName(last, allFavs, last.cid);
         if (!name) return;
-        current = { cid: last.cid, name, altName: sub };
+        setCurrent({ cid: last.cid, name, altName: sub });
         setTabTitle(name);
         setNowPlayingName(name, sub);
         $('now-playing').style.display = 'block';

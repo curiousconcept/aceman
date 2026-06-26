@@ -9,9 +9,8 @@
 // unit-tested; this module is the DOM wiring.
 //
 // markSearchRowSaved + refreshSearchResultsIfAny are forward imports from
-// the search domain (favourites changes flip per-result-row state).
-// Transitional back-refs into app.js (until playback is its own domain):
-// current (the playing stream) + play (start playback) + mode (storage).
+// the search domain (favourites changes flip per-result-row state). Also
+// imports current + play from playback and mode from shared/runtime.
 
 import { $, showError, showBusy, hideBusy, showConfirm } from '../../shared/dom.js';
 import { api } from '../../shared/api.js';
@@ -25,7 +24,7 @@ import { paginate } from '../../lib/pagination.js';
 import { runModal } from '../../lib/modal.js';
 import { markSearchRowSaved, refreshSearchResultsIfAny } from '../search/search.js';
 import { current, play } from '../playback/playback.js';
-import { mode } from '../../app.js';
+import { mode } from '../../shared/runtime.js';
 
 // Browser-side favourites store (used when the server has no sqlite3).
 // Implementation lives in lib/favourites/ and is unit-tested.

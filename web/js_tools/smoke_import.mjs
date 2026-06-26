@@ -6,7 +6,7 @@
 // circular-import TDZ access, the import() rejects and this exits non-zero.
 // Behaviour is NOT exercised — only that the graph loads and the init
 // IIFE survives its synchronous prefix. Run in the npm-sandbox:
-//   node js_tools/smoke_import.mjs js/app.js [js/domains/foo/foo.js ...]
+//   node js_tools/smoke_import.mjs js/main.js [js/domains/foo/foo.js ...]
 
 // A callable, infinitely-chainable fake DOM node: any property read or
 // method call returns the node itself, so arbitrary DOM glue runs
