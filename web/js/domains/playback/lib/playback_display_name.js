@@ -12,6 +12,10 @@
 //
 // Pure. No DOM, no globals.
 
+// Pure-core composition: import the favourites lookup primitive directly,
+// NOT via favourites/index.js — the index is the shell's public boundary
+// and pulls in DOM-touching modules, which a pure lib (and its isolated
+// unit test) must stay clear of.
 import { findFavouriteByCid } from '../../favourites/lib/favourite_lookup.js';
 
 export function resolveDisplayName(opts, favs, cid) {

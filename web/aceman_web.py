@@ -171,6 +171,18 @@ def _strip_module_syntax(src: str) -> str:
                 inside_import = True
                 import_buffer.append(s)
             continue
+        # Aggregate / re-export lines (`export { x } from './y'`,
+        # `export * from './y'`) come from a domain's public index.js.
+        # The re-exported symbols are already declared by their source
+        # file, which is bundled into the same scope — so the re-export
+        # is pure noise in the bundle and would otherwise survive as an
+        # orphan `{ x } from '…'` (syntax error). Drop it, multi-line
+        # aware, exactly like an import.
+        if s.startswith("export {") or s.startswith("export *"):
+            if not line.rstrip().endswith(";"):
+                inside_import = True
+                import_buffer.append(s)
+            continue
         if s.startswith("export "):
             line = line.replace("export ", "", 1)
         out_lines.append(line)

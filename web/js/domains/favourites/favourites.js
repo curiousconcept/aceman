@@ -22,8 +22,8 @@ import { findFavouriteByCid } from './lib/favourite_lookup.js';
 import { extractExistingName } from './lib/api_errors.js';
 import { paginate } from '../../lib/pagination.js';
 import { runModal } from '../../lib/modal.js';
-import { markSearchRowSaved, refreshSearchResultsIfAny } from '../search/search.js';
-import { current, play } from '../playback/playback.js';
+import { markSearchRowSaved, refreshSearchResultsIfAny } from '../search/index.js';
+import { current, play } from '../playback/index.js';
 import { mode } from '../../shared/runtime.js';
 
 // Browser-side favourites store (used when the server has no sqlite3).

@@ -38,10 +38,10 @@ import { describeMoveButton } from './lib/move_stream_button.js';
 import { describeEngineToggle } from './lib/engine/engine_start_stop_toggle.js';
 import { resolveDisplayName } from './lib/playback_display_name.js';
 import { describePlayButtonGate } from './lib/engine/play_button_gate.js';
-import { allFavs, loadFavs, updateSaveButton, browserFavs } from '../favourites/favourites.js';
-import { refreshSearchSection, refreshClearButton } from '../search/search.js';
+import { allFavs, loadFavs, updateSaveButton, browserFavs } from '../favourites/index.js';
+import { refreshSearchSection, refreshClearButton } from '../search/index.js';
 import { detectedPlayers, detectedBrowsers, _currentBrowserName } from './detection.js';
-import { buildGpuParams, gpuEncodeLabel } from '../gpu/gpu.js';
+import { buildGpuParams, gpuEncodeLabel } from '../gpu/index.js';
 import { mode, isWslMode } from '../../shared/runtime.js';
 
 // The active stream, just enough to drive the Save button: we no longer

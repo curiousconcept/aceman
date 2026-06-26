@@ -10,7 +10,7 @@
 import { $, showError, showConfirm } from '../../shared/dom.js';
 import { api } from '../../shared/api.js';
 import { describeContainerImageStatus } from './lib/container_image_status.js';
-import { refreshEngineStatus } from '../playback/playback.js';
+import { refreshEngineStatus } from '../playback/index.js';
 
 let imagePoll = null;
 

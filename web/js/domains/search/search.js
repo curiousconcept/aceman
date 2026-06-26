@@ -13,15 +13,15 @@
 
 import { $, showError, showBusy, hideBusy } from '../../shared/dom.js';
 import { api } from '../../shared/api.js';
-import { parseId } from '../playback/lib/content_id_parser.js';
+import { parseId } from '../playback/index.js';
 import { debounce } from './lib/debounce.js';
 import { paginate } from '../../lib/pagination.js';
 import { shouldSearch, normaliseQuery, buildSearchUrl } from './lib/search_query.js';
-import { findFavouriteByCid } from '../favourites/lib/favourite_lookup.js';
-import { hideHistorySection } from '../history/history.js';
-import { allFavs, instaSave, updateSaveButton } from '../favourites/favourites.js';
-import { play } from '../playback/playback.js';
-import { alignSearchToInput } from '../playback/playback.js';
+import { findFavouriteByCid } from '../favourites/index.js';
+import { hideHistorySection } from '../history/index.js';
+import { allFavs, instaSave, updateSaveButton } from '../favourites/index.js';
+import { play } from '../playback/index.js';
+import { alignSearchToInput } from '../playback/index.js';
 
 let lastSearchQuery = '';
 // Pagination of search results. Mirrors the favourites pager — same

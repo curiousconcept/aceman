@@ -1,36 +1,32 @@
 // Bootstrap: wires the DOM to the domains and runs init. Pure logic
-// belongs in a lib module (tested under web/js_tests/), not here.
-import { parseId } from './domains/playback/lib/content_id_parser.js';
+// belongs in a lib module (tested under web/js_tests/), not here. Every
+// import below is a domain's public interface (domains/<x>/index.js) or
+// the shared/lib substrate — never a file behind a domain boundary.
 import { $, showError, showConfirm, showBusy, hideBusy } from './shared/dom.js';
 import { api } from './shared/api.js';
 import { mountAcemanSelect } from './shared/dropdown.js';
-import { openResetModal, closeResetModal, runFactoryReset } from './domains/factory-reset/factory_reset.js';
-import { initGpuCard, buildGpuParams, gpuEncodeLabel } from './domains/gpu/gpu.js';
-import { refreshImageStatus, installImage, uninstallImage } from './domains/image/image.js';
-import { initContainerMemory } from './domains/container-memory/container_memory.js';
-import { initLogs } from './domains/logs/logs.js';
-import { refreshDesktopEntry, toggleDesktopEntry } from './domains/desktop/desktop_entry.js';
-import { loadPlayers, loadBrowsers, detectCurrentBrowser,
-         detectedPlayers, detectedBrowsers, _currentBrowserName } from './domains/playback/detection.js';
-import { KEYS } from './lib/storage_keys.js';
-import { onSearchInput, refreshSearchSection, refreshClearButton, clearCidInput,
-         runSearch, searchPagePrev, searchPageNext } from './domains/search/search.js';
-import { loadLastPlay } from './domains/playback/lib/last_played_stream.js';
-import { extractPlayCidFromUrl } from './domains/playback/lib/play_query_param.js';
-import { bufferLabel } from './domains/playback/lib/playback_buffer.js';
-import { describeFavouritesStorageBadge } from './domains/favourites/lib/favourites_storage_badge.js';
-import { resolveDisplayName } from './domains/playback/lib/playback_display_name.js';
-import { hideHistorySection, openHistoryDropdown, closeHistoryDropdown,
-         historyDropdownOpen } from './domains/history/history.js';
-import { allFavs, browserFavs, loadFavs, updateSaveButton, saveFav,
-         setFavSearch, favPagePrev, favPageNext } from './domains/favourites/favourites.js';
-import { current, livePlaybackTarget, cfg, play, renderPlaybackTargets,
-         restartStream, refreshEngineStatus, engineState, clearNowPlaying,
-         setTabTitle, setNowPlayingName, persistPlaybackTarget, waitForEngineReady,
-         waitForBackend, refreshPlayerRowAlignment, movePlaybackToSelection,
-         toggleEngine, saveAutostart, notifyRestartNeeded,
-         alignSearchToInput, setCfg, setCurrent } from './domains/playback/playback.js';
 import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
+import { KEYS } from './lib/storage_keys.js';
+import { openResetModal, closeResetModal, runFactoryReset } from './domains/factory-reset/index.js';
+import { initGpuCard, buildGpuParams, gpuEncodeLabel } from './domains/gpu/index.js';
+import { refreshImageStatus, installImage, uninstallImage } from './domains/image/index.js';
+import { initContainerMemory } from './domains/container-memory/index.js';
+import { initLogs } from './domains/logs/index.js';
+import { refreshDesktopEntry, toggleDesktopEntry } from './domains/desktop/index.js';
+import { onSearchInput, refreshSearchSection, refreshClearButton, clearCidInput,
+         runSearch, searchPagePrev, searchPageNext } from './domains/search/index.js';
+import { describeFavouritesStorageBadge, allFavs, browserFavs, loadFavs,
+         updateSaveButton, saveFav, setFavSearch, favPagePrev, favPageNext } from './domains/favourites/index.js';
+import { hideHistorySection, openHistoryDropdown, closeHistoryDropdown,
+         historyDropdownOpen } from './domains/history/index.js';
+import { parseId, loadPlayers, loadBrowsers, detectCurrentBrowser, detectedPlayers,
+         detectedBrowsers, _currentBrowserName, loadLastPlay, extractPlayCidFromUrl,
+         bufferLabel, resolveDisplayName, current, livePlaybackTarget, cfg, play,
+         renderPlaybackTargets, restartStream, refreshEngineStatus, engineState,
+         clearNowPlaying, setTabTitle, setNowPlayingName, persistPlaybackTarget,
+         waitForEngineReady, waitForBackend, refreshPlayerRowAlignment,
+         movePlaybackToSelection, toggleEngine, saveAutostart, notifyRestartNeeded,
+         alignSearchToInput, setCfg, setCurrent } from './domains/playback/index.js';
 
 // ---- init --------------------------------------------------------------
 (async () => {
