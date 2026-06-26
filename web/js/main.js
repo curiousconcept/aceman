@@ -2,11 +2,14 @@
 // belongs in a lib module (tested under web/js_tests/), not here. Every
 // import below is a domain's public interface (domains/<x>/index.js) or
 // the shared/lib substrate — never a file behind a domain boundary.
-import { $, showError, showConfirm, showBusy, hideBusy } from './shared/dom.js';
+import { $, showError, showBusy, hideBusy } from './shared/dom.js';
 import { api } from './shared/api.js';
 import { mountAcemanSelect } from './shared/dropdown.js';
 import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
 import { KEYS } from './lib/storage_keys.js';
+import { initWordmark } from './domains/wordmark/index.js';
+import { initDiagnostics } from './domains/diagnostics/index.js';
+import { initLifecycle } from './domains/lifecycle/index.js';
 import { openResetModal, closeResetModal, runFactoryReset } from './domains/factory-reset/index.js';
 import { initGpuCard, buildGpuParams, gpuEncodeLabel } from './domains/gpu/index.js';
 import { refreshImageStatus, installImage, uninstallImage } from './domains/image/index.js';
@@ -21,34 +24,16 @@ import { hideHistorySection, openHistoryDropdown, closeHistoryDropdown,
          historyDropdownOpen } from './domains/history/index.js';
 import { parseId, loadPlayers, loadBrowsers, detectCurrentBrowser, detectedPlayers,
          detectedBrowsers, _currentBrowserName, loadLastPlay, extractPlayCidFromUrl,
-         bufferLabel, resolveDisplayName, current, livePlaybackTarget, cfg, play,
+         resolveDisplayName, current, livePlaybackTarget, cfg, play, initPlaybackControls,
          renderPlaybackTargets, restartStream, refreshEngineStatus, engineState,
          clearNowPlaying, setTabTitle, setNowPlayingName, persistPlaybackTarget,
          waitForEngineReady, waitForBackend, refreshPlayerRowAlignment,
-         movePlaybackToSelection, toggleEngine, saveAutostart, notifyRestartNeeded,
+         movePlaybackToSelection, toggleEngine, saveAutostart,
          alignSearchToInput, setCfg, setCurrent } from './domains/playback/index.js';
 
 // ---- init --------------------------------------------------------------
 (async () => {
-  // ACEMAN wordmark glow toggle. Default ON; click the title to flip
-  // .glow, persisted across sessions.
-  (() => {
-    const title = $('aceman-title');
-    if (!title) return;
-    const stored = localStorage.getItem(KEYS.GLOW);
-    title.classList.toggle('glow', stored === null ? true : stored === '1');
-    const toggle = () => {
-      const next = !title.classList.contains('glow');
-      title.classList.toggle('glow', next);
-      try { localStorage.setItem(KEYS.GLOW, next ? '1' : '0'); }
-      catch (_) {}
-    };
-    title.onclick = toggle;
-    // Keyboard activation since role="button" — Space/Enter to toggle.
-    title.onkeydown = e => {
-      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(); }
-    };
-  })();
+  initWordmark();
 
   // Identify the current browser before loadBrowsers' first dropdown
   // render, so it can label/filter same-name entries from the start.
@@ -192,78 +177,8 @@ import { parseId, loadPlayers, loadBrowsers, detectCurrentBrowser, detectedPlaye
       renderPlaybackTargets();
     };
   }
-  // Stats line toggle — click to hide, "Display Stats" button to restore.
-  {
-    let statsHidden = localStorage.getItem(KEYS.STATS_HIDDEN) === '1';
-    const applyStatsVis = () => {
-      const s = $('pb-video-status');
-      const b = $('show-stats-btn');
-      if (!s || !b) return;
-      s.style.display = statsHidden ? 'none' : '';
-      b.style.display = statsHidden ? '' : 'none';
-    };
-    applyStatsVis();
-    const pbStatus = $('pb-video-status');
-    if (pbStatus) {
-      pbStatus.onclick = () => {
-        statsHidden = true;
-        localStorage.setItem(KEYS.STATS_HIDDEN, '1');
-        applyStatsVis();
-      };
-      pbStatus.oncontextmenu = e => {
-        e.preventDefault();
-        const text = pbStatus.textContent;
-        if (!text) return;
-        navigator.clipboard.writeText(text).then(() => {
-          const prev = pbStatus.style.opacity;
-          pbStatus.style.opacity = '1';
-          pbStatus.style.color = 'var(--acc)';
-          setTimeout(() => {
-            pbStatus.style.opacity = prev;
-            pbStatus.style.color = '';
-          }, 600);
-        }).catch(() => {});
-      };
-    }
-    const showStatsBtn = $('show-stats-btn');
-    if (showStatsBtn) showStatsBtn.onclick = () => {
-      statsHidden = false;
-      localStorage.setItem(KEYS.STATS_HIDDEN, '0');
-      applyStatsVis();
-    };
-  }
+  initPlaybackControls();   // stats line toggle + in-tab buffer slider
 
-  // In-tab pre-roll buffer slider. 0 = Off (live edge). Read at play time.
-  {
-    const bufSlider = $('playback-buffer');
-    const bufOut    = $('playback-buffer-out');
-    if (bufSlider) {
-      bufSlider.max = '60';
-      const storedVal = parseInt(localStorage.getItem(KEYS.PLAYBACK_BUFFER) || '0', 10);
-      bufSlider.value = String(Math.min(Math.max(storedVal, 0), 60));
-      if (bufOut) bufOut.textContent = bufferLabel(bufSlider.value, 60);
-      // Seed the server from localStorage on load so the aceman CLI's
-      // buffer_secs isn't stale when the slider goes untouched.
-      api('/api/config', {
-        method: 'POST',
-        body: JSON.stringify({ buffer_secs: Math.min(Math.max(storedVal, 0), 60) }),
-      }).catch(() => {});
-      bufSlider.oninput = () => {
-        const n = Math.min(Math.max(parseInt(bufSlider.value, 10), 0), 60);
-        localStorage.setItem(KEYS.PLAYBACK_BUFFER, String(n));
-        if (bufOut) bufOut.textContent = bufferLabel(n, 60);
-      };
-      // On release, persist server-side (config.json:buffer_secs) so the
-      // aceman CLI applies the same seconds to the external player cache.
-      bufSlider.onchange = () => {
-        const n = Math.min(Math.max(parseInt(bufSlider.value, 10), 0), 60);
-        api('/api/config', {
-          method: 'POST', body: JSON.stringify({ buffer_secs: n }),
-        }).catch(() => {});
-        notifyRestartNeeded();   // buffer change applies on next stream start
-      };
-    }
-  }
   $('fav-search').oninput = e => setFavSearch(e.target.value);
   $('fav-prev').onclick = favPagePrev;
   $('fav-next').onclick = favPageNext;
@@ -276,94 +191,7 @@ import { parseId, loadPlayers, loadBrowsers, detectCurrentBrowser, detectedPlaye
   $('image-uninstall').onclick = uninstallImage;
   refreshImageStatus();
 
-  // Manual "Quit" — POST /api/shutdown stops the engine container and
-  // tears down the web server. Explicit action, so we stop everything.
-  $('server-shutdown').onclick = async () => {
-    if (!(await showConfirm({
-      title: 'Quit aceman',
-      message: 'Shut down aceman and stop the engine container?',
-      confirmText: 'Quit',
-      danger: true,
-    }))) return;
-    const btn = $('server-shutdown');
-    btn.disabled = true;
-    btn.textContent = 'Shutting down…';
-    try {
-      await api('/api/shutdown', {
-        method: 'POST', body: JSON.stringify({ stop_engine: true }),
-      });
-    } catch (_) { /* server may already be gone */ }
-    document.body.innerHTML =
-      '<div style="text-align:center;padding:3rem;color:#aaa;' +
-      'font:14px/1.5 system-ui,sans-serif">' +
-      '<h2 style="color:#eee">aceman stopped</h2>' +
-      '<p>The engine container has been stopped. You can close this tab.</p>' +
-      '</div>';
-  };
-
-  // Restart modal: optionally rebuild images before bouncing. Default
-  // is "just bounce" (rebuild is slower and bakes on-disk state into the
-  // image). Preflight decides whether to show the "new changes" warning.
-  async function openRestartModal() {
-    $('restart-modal').style.display = 'flex';
-    $('restart-rebuild-cb').checked = false;
-    $('restart-rebuild-warn').style.display = 'none';
-    try {
-      const r = await api('/api/restart/preflight');
-      if (r && r.rebuild_recommended) {
-        $('restart-rebuild-warn').style.display = '';
-      }
-    } catch (_) { /* preflight is best-effort; no warning if it fails */ }
-  }
-  function closeRestartModal() {
-    $('restart-modal').style.display = 'none';
-  }
-  $('server-restart').onclick = openRestartModal;
-  $('restart-cancel').onclick = closeRestartModal;
-  $('restart-go').onclick = async () => {
-    const rebuild = $('restart-rebuild-cb').checked;
-    closeRestartModal();
-    // Block the UI behind the busy modal while the restart is in flight.
-    // The page stays intact behind the backdrop, so a timed-out restart
-    // leaves a working UI rather than a text-only error page.
-    showBusy(rebuild
-        ? 'Restarting and rebuilding images… this may take a minute.'
-        : 'Restarting…');
-    const btn = $('server-restart');
-    btn.disabled = true;
-    btn.textContent = 'Restarting…';
-    // Breadcrumb consumed by the post-reload init to mark the engine
-    // "settling" (fresh JS has no transition to detect on cold start).
-    sessionStorage.setItem(KEYS.RESTARTED_AT, String(Date.now()));
-    try {
-      await api('/api/restart', {
-        method: 'POST',
-        body: JSON.stringify({ rebuild }),
-      });
-    } catch (_) { /* connection close is expected */ }
-    // Poll until the new instance responds, then reload. Wider window
-    // for rebuild=true since podman build adds a few seconds.
-    const start = Date.now();
-    const timeoutMs = rebuild ? 180_000 : 30_000;
-    const ping = async () => {
-      if (Date.now() - start > timeoutMs) {
-        hideBusy();
-        btn.disabled = false;
-        btn.textContent = 'Restart';
-        showError('Restart timed out after '
-                + Math.round(timeoutMs / 1000)
-                + ' s — check the terminal or tools/tail-web.sh.');
-        return;
-      }
-      try {
-        const r = await fetch('/api/storage-mode', { cache: 'no-store' });
-        if (r.ok) { window.location.reload(); return; }
-      } catch (_) { /* still down */ }
-      setTimeout(ping, 700);
-    };
-    setTimeout(ping, 1200);  // give old enough time to release the port
-  };
-
+  initLifecycle();   // Quit (shutdown) + Restart modal
   initLogs();
 
   $('factory-reset').onclick = openResetModal;
@@ -427,46 +255,6 @@ import { parseId, loadPlayers, loadBrowsers, detectCurrentBrowser, detectedPlaye
   }
 })();
 
-// Debug telemetry: type d → b → g (outside any input) to show a
-// 3-second viewport-size overlay. Useful for reporting layout issues.
-(function () {
-  const SEQ = 'dbg';
-  let buf = '', timer = null, hideTimer = null;
-  document.addEventListener('keydown', (e) => {
-    const tag = document.activeElement && document.activeElement.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-    clearTimeout(timer);
-    buf += e.key.toLowerCase();
-    buf = buf.slice(-SEQ.length);
-    if (buf === SEQ) {
-      buf = '';
-      const el = document.getElementById('dbg-overlay');
-      if (!el) return;
-      const vw = window.innerWidth, vh = window.innerHeight;
-      const bw = document.body.clientWidth;
-      const dpr = window.devicePixelRatio || 1;
-      // Two server-injected markers:
-      //   build  — content hash of the served page + web backend (.py);
-      //            the version signal, independent of podman.
-      //   commit — git SHA (+ dirty); may be empty without meaning the
-      //            build is wrong, hence a separate field.
-      // NOTE: never reference the literal injection sentinels here — the
-      // server's page-wide replace would clobber them and break the guard.
-      const build = el.dataset.build || '';
-      const commit = el.dataset.commit || '';
-      const text = `${vw} x ${vh}px  body ${bw}px  DPR ${dpr}`
-        + (build ? `  build ${build}` : '')
-        + (commit ? `  commit ${commit}` : '');
-      el.innerHTML =
-        `${vw} &times; ${vh}px &nbsp;&#183;&nbsp; body&nbsp;${bw}px &nbsp;&#183;&nbsp; DPR&nbsp;${dpr}`
-        + (build ? ` &nbsp;&#183;&nbsp; build&nbsp;${build}` : '')
-        + (commit ? ` &nbsp;&#183;&nbsp; commit&nbsp;${commit}` : '');
-      el.classList.add('visible');
-      clearTimeout(hideTimer);
-      navigator.clipboard.writeText(text).catch(() => {});
-      hideTimer = setTimeout(() => el.classList.remove('visible'), 3000);
-      return;
-    }
-    timer = setTimeout(() => { buf = ''; }, 1500);
-  });
-}());
+// Registered synchronously at load (outside the async init) so the
+// d→b→g shortcut works even if the backend handshake is still pending.
+initDiagnostics();
