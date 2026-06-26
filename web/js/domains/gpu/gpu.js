@@ -11,7 +11,7 @@ import { api } from '../../shared/api.js';
 import { mountAcemanSelect } from '../../shared/dropdown.js';
 import { notifyRestartNeeded } from '../playback/playback.js';
 import { KEYS } from '../../lib/storage_keys.js';
-import { gpuQueryParams } from '../../lib/gpu/gpu_params.js';
+import { gpuQueryParams } from './lib/gpu_params.js';
 
 let _gpuCaps = null;  // populated by initGpuCard() at startup
 

@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveDisplayName } from '../js/lib/favourites/playback_display_name.js';
+import { resolveDisplayName } from '../js/domains/playback/lib/playback_display_name.js';
 
 const CID = 'a'.repeat(40);
 const CID_B = 'b'.repeat(40);

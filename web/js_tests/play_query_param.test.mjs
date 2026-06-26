@@ -8,7 +8,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractPlayCidFromUrl } from '../js/lib/playback/play_query_param.js';
+import { extractPlayCidFromUrl } from '../js/domains/playback/lib/play_query_param.js';
 
 const CID = 'a'.repeat(40);
 

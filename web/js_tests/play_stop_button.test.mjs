@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { describePlayButton } from '../js/lib/playback/play_stop_button.js';
+import { describePlayButton } from '../js/domains/playback/lib/play_stop_button.js';
 
 test('idle → ▶ with Play title and aria-label, no .playing class', () => {
   const v = describePlayButton(false);

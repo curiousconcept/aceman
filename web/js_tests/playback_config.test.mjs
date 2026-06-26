@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { targetValueToConfig } from '../js/lib/playback/playback_config.js';
+import { targetValueToConfig } from '../js/domains/playback/lib/playback_config.js';
 
 test('bare "browser" → in-tab mode, no specific browser pinned', () => {
   assert.deepEqual(targetValueToConfig('browser'), {

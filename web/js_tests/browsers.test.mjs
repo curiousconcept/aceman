@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {
   KNOWN_BROWSERS, browserLabel,
   sniffBrowserFromUA, detectBrowserFromNav,
-} from '../js/lib/browsers.js';
+} from '../js/domains/playback/lib/browsers.js';
 
 test('KNOWN_BROWSERS is frozen and covers the four shipped probes', () => {
   assert.deepEqual([...KNOWN_BROWSERS].sort(),

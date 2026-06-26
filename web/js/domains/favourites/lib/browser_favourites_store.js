@@ -7,7 +7,7 @@
 // The factory takes an explicit `storage` so tests can pass an in-
 // memory Map-backed stand-in instead of the real localStorage:
 //
-//   import { createBrowserFavouritesStore } from './browser_favs.js';
+//   import { createBrowserFavouritesStore } from '../../../lib/favourites/browser_favs.js';
 //   const favs = createBrowserFavouritesStore();        // production
 //   const favs = createBrowserFavouritesStore(fakeLS);  // tests
 //

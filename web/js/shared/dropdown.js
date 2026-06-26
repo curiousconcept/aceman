@@ -15,8 +15,10 @@
 // <select> doesn't fire 'change' on `el.value = ...`, but we still
 // need the trigger label to update.
 //
-// Self-contained: only browser globals (document, MutationObserver,
-// Event, MouseEvent). No app state, no imports.
+// Only browser globals (document, MutationObserver, Event, MouseEvent)
+// plus the pure key-intent helper from lib/. No app state.
+import { dropdownKeyAction } from '../lib/dropdown_keys.js';
+
 export function mountAcemanSelect(native) {
   if (!native || native._acemanMounted) return;
   native._acemanMounted = true;
@@ -150,23 +152,17 @@ export function mountAcemanSelect(native) {
     if (listbox.hidden) open(); else close();
   });
   trigger.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      if (listbox.hidden) open();
-      else {
-        const next = focusedOption ? nextOption(focusedOption, e.key === 'ArrowDown' ? 1 : -1) : firstOption();
-        if (next) focusOption(next);
-      }
-    } else if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      if (listbox.hidden) open();
-      else if (focusedOption) {
-        focusedOption.dispatchEvent(new MouseEvent('mousedown'));
-      }
-    } else if (e.key === 'Escape') {
-      if (!listbox.hidden) { e.preventDefault(); close(); }
-    } else if (e.key === 'Tab') {
-      close();   // let focus move on naturally
+    const { action, preventDefault, dir } = dropdownKeyAction(e.key, !listbox.hidden);
+    if (preventDefault) e.preventDefault();
+    if (action === 'open') {
+      open();
+    } else if (action === 'move') {
+      const next = focusedOption ? nextOption(focusedOption, dir) : firstOption();
+      if (next) focusOption(next);
+    } else if (action === 'select') {
+      if (focusedOption) focusedOption.dispatchEvent(new MouseEvent('mousedown'));
+    } else if (action === 'close') {
+      close();
     }
   });
 

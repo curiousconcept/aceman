@@ -8,7 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { saveLastPlay, loadLastPlay, clearLastPlay }
-  from '../js/lib/playback/last_played_stream.js';
+  from '../js/domains/playback/lib/last_played_stream.js';
 import { KEYS } from '../js/lib/storage_keys.js';
 
 const CID = 'a'.repeat(40);

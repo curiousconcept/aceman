@@ -11,7 +11,7 @@
 // `window.location.search`), we return either a validated
 // lowercased cid or null.
 
-import { parseId } from './content_id_parser.js';
+import { parseId } from '../../../lib/playback/content_id_parser.js';
 
 export function extractPlayCidFromUrl(searchString) {
   if (typeof searchString !== 'string') return null;

@@ -1,9 +1,5 @@
-// main.js is the bootstrap, loaded as an ES module from index.html. It
-// wires the DOM to the domains and runs init. Pure helpers live
-// under ./lib/ and are unit-tested under web/js_tests/. Everything in
-// THIS file is the wiring between the DOM, the broker, and those
-// helpers — there's nothing here a JS test should be poking at
-// directly. Add new pure logic to a lib module first.
+// Bootstrap: wires the DOM to the domains and runs init. Pure logic
+// belongs in a lib module (tested under web/js_tests/), not here.
 import { parseId } from './lib/playback/content_id_parser.js';
 import { $, showError, showConfirm, showBusy, hideBusy } from './shared/dom.js';
 import { api } from './shared/api.js';
@@ -17,11 +13,11 @@ import { loadPlayers, loadBrowsers, detectCurrentBrowser,
 import { KEYS } from './lib/storage_keys.js';
 import { onSearchInput, refreshSearchSection, refreshClearButton, clearCidInput,
          runSearch, searchPagePrev, searchPageNext } from './domains/search/search.js';
-import { loadLastPlay } from './lib/playback/last_played_stream.js';
-import { extractPlayCidFromUrl } from './lib/playback/play_query_param.js';
-import { bufferLabel } from './lib/playback/playback_buffer.js';
-import { describeFavouritesStorageBadge } from './lib/favourites/favourites_storage_badge.js';
-import { resolveDisplayName } from './lib/favourites/playback_display_name.js';
+import { loadLastPlay } from './domains/playback/lib/last_played_stream.js';
+import { extractPlayCidFromUrl } from './domains/playback/lib/play_query_param.js';
+import { bufferLabel } from './domains/playback/lib/playback_buffer.js';
+import { describeFavouritesStorageBadge } from './domains/favourites/lib/favourites_storage_badge.js';
+import { resolveDisplayName } from './domains/playback/lib/playback_display_name.js';
 import { hideHistorySection, openHistoryDropdown, closeHistoryDropdown,
          historyDropdownOpen } from './domains/history/history.js';
 import { allFavs, browserFavs, loadFavs, updateSaveButton, saveFav,
@@ -36,11 +32,8 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
 
 // ---- init --------------------------------------------------------------
 (async () => {
-  // ACEMAN wordmark glow toggle. Default ON; the ✨ button next to the
-  // title flips .glow on the wordmark, and the choice persists across
-  // reloads/sessions so the user's pick sticks. Defaulting to on means
-  // first-time visitors see the effect that gives the title its
-  // identity — they can mute it if it distracts.
+  // ACEMAN wordmark glow toggle. Default ON; click the title to flip
+  // .glow, persisted across sessions.
   (() => {
     const title = $('aceman-title');
     if (!title) return;
@@ -59,29 +52,20 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
     };
   })();
 
-  // Identify what browser we're in BEFORE loadBrowsers triggers the
-  // first dropdown render — otherwise the initial render shows the
-  // generic "This browser tab" label and doesn't filter same-name
-  // entries, then re-renders a beat later when detection resolves.
+  // Identify the current browser before loadBrowsers' first dropdown
+  // render, so it can label/filter same-name entries from the start.
   await detectCurrentBrowser();
-  // Hold behind the "please wait" modal until the web backend is
-  // actually answering — otherwise a desktop-entry cold start drops the
-  // user onto a fully-interactive page behind a bare NetworkError while
-  // the server is still coming up. Once this returns true the calls
-  // below succeed immediately; the timeout path falls through to the
-  // existing catch, which paints the actionable error.
+  // Hold behind the "please wait" modal until the backend answers, so a
+  // cold start doesn't drop the user onto a live page behind a
+  // NetworkError. On timeout the calls below fall to the catch.
   await waitForBackend();
   try {
     const cfg = await api('/api/storage-mode');
     setMode(cfg.mode);
-    // Engine URL surfaces as a hover tooltip on the Engine corner-label
-    // (with the .has-tooltip dashed underline as the visual hint).
+    // Engine URL as a hover tooltip on the Engine corner-label.
     if (cfg.engine) $('engine-label').title = cfg.engine;
-    // Search sources, one per line. The label this used to attach to
-    // was the standalone "Find streams" card, which folded into the
-    // Watch card. We surface the hint on #search-status (the small
-    // status pill next to the Watch title) instead — it only paints
-    // when a search is active anyway.
+    // Search sources, one per line, surfaced as a tooltip on the
+    // #search-status pill next to the Watch title.
     const searchStatus = $('search-status');
     if (searchStatus) {
       const srcs = Array.isArray(cfg.search_sources) ? cfg.search_sources : [];
@@ -99,20 +83,19 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
     // Hide Linux-desktop-only affordances when served to a Windows-side browser.
     setWslMode(!!cfg.is_wsl);
     if (isWslMode) {
-      // App launcher row: no xdg-mime or .desktop on Windows
+      // App launcher row: no xdg-mime or .desktop on Windows.
       const desktopRow = $('desktop-row');
       if (desktopRow) desktopRow.style.display = 'none';
-      // Player / browser selector: Linux-side targets aren't reachable
-      // from the Windows browser. Hide the selection UI but keep the
-      // buffer slider — in WSL you're always playing in-browser so it's
-      // the most relevant control on the card.
+      // Player/browser selector: Linux-side targets are unreachable from
+      // the Windows browser. Hide selection, keep the buffer slider
+      // (WSL always plays in-browser).
       const playerSelectRow = $('player-select-row');
       if (playerSelectRow) playerSelectRow.style.display = 'none';
       const showAllRow = $('show-all-row');
       if (showAllRow) showAllRow.style.display = 'none';
       const playerHint = $('player-hint');
       if (playerHint) playerHint.style.display = 'none';
-      // Rename card label to reflect the remaining content
+      // Rename card label to reflect the remaining content.
       const playerLabel = document.querySelector('#player-card .card-label');
       if (playerLabel) playerLabel.textContent = 'Playback';
     }
@@ -126,20 +109,17 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
   } catch (_) { /* config endpoint may be disabled */ }
 
   // Favourites first; engine status second so the page doesn't flash
-  // "engine offline" for a tick while loadFavs awaits the DB read.
+  // "engine offline" while loadFavs awaits the DB read.
   await loadFavs();
   await loadPlayers();
   await loadBrowsers();
   initGpuCard();  // fire-and-forget; card appears when broker responds
-  // Replace the native <select> popup with our fully-CSS-styled
-  // dropdown — Firefox/Linux otherwise renders the option highlight
-  // as a system purple no amount of CSS can override.
+  // Replace the native <select> popup with the CSS-styled dropdown
+  // (Firefox/Linux otherwise forces a system-purple option highlight).
   mountAcemanSelect($('playback-target'));
-  // If we just came back from a Restart, mark the engine settling so
-  // the first poll's likely "not running" reading doesn't promote a
-  // tempting "Start engine" button while podman is still bouncing.
-  // Only honor breadcrumbs younger than 60s so an old key from a
-  // crash-reload session doesn't suppress a fresh, intentional stop.
+  // Just back from a Restart: mark the engine settling so the first
+  // poll's likely "not running" reading doesn't promote a "Start
+  // engine" button mid-bounce. Honor only breadcrumbs younger than 60s.
   const _restartedAt = parseInt(sessionStorage.getItem(KEYS.RESTARTED_AT) || '0', 10);
   sessionStorage.removeItem(KEYS.RESTARTED_AT);
   if (_restartedAt && Date.now() - _restartedAt < 60000) {
@@ -172,7 +152,7 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
       hint.textContent = nearLimit ? `— consider raising ${envKey}` : '';
       hint.style.display = nearLimit ? '' : 'none';
     }
-    // Update tooltip on the label span with actual current limit
+    // Tooltip on the label span shows the current limit.
     const label = cell.querySelector('.tip');
     if (label && data.limit_bytes > 0) {
       const cur = _fmtBytes(data.limit_bytes);
@@ -202,11 +182,9 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
   refreshContainerMemory();
   setInterval(refreshContainerMemory, 8000);
 
-  // The Play button toggles between ▶ (idle) and ⏹ (something playing
-   // — anywhere: this tab, another browser, vlc, mpv). Clicking it in
-   // the stop state tears down everything: in-browser proxy if any,
-   // and any host-side wrapper holding mpv/vlc. The fav touch flow is
-   // play()'s responsibility, not stop's.
+  // The Play button toggles ▶ (idle) / ⏹ (playing anywhere — this tab,
+  // another browser, vlc, mpv). Stop tears down the in-browser proxy
+  // and any host-side wrapper holding mpv/vlc.
   $('restream-btn').onclick = () => restartStream();
 
   $('play-btn').onclick = async () => {
@@ -215,23 +193,12 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
       try {
         try { await api('/api/player/stop', { method: 'POST', body: '{}' }); }
         catch (_) { /* best-effort */ }
-        // Stop = "I'm done watching that" — clean every visible
-        // referent in one step instead of leaving stale bits behind:
-        //   clearNowPlaying()  resets the Watch card title to its
-        //                      empty state, hides the video element,
-        //                      drops the channel name from the tab
-        //                      title, kills the in-browser proxy if
-        //                      one was running, clears `current`
-        //                      (so the Save-as-fav button hides),
-        //                      and triggers refreshPlaybackMoveButton.
-        //   clearCidInput()    wipes the cid from the Watch input so
-        //                      the operator can type a new search
-        //                      without first hand-deleting the old
-        //                      value. Favourites is right below if
-        //                      they want the same thing back.
-        //   updateSaveButton() picks up the cleared `current` and
-        //                      hides the "Saved as <name>" button
-        //                      that lingered with stale text.
+        // Stop clears every visible referent in one step:
+        //   clearNowPlaying()  resets the Watch card, hides the video,
+        //                      clears the tab title, kills the in-browser
+        //                      proxy, and clears `current`.
+        //   clearCidInput()    wipes the cid so a new search can be typed.
+        //   updateSaveButton() hides the now-stale Save-as-fav button.
         clearNowPlaying();
         clearCidInput();
         updateSaveButton();
@@ -241,16 +208,12 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
       try { await play(); } finally { hideBusy(); }
     }
   };
-  // Unified Watch input — drives BOTH play (on Enter/Play-button) and
-  // search (debounced, on every keystroke when the value isn't a cid).
-  // refreshSearchSection() decides whether the results panel paints.
+  // Unified Watch input — drives play (Enter/Play button) and search
+  // (debounced per keystroke when the value isn't a cid).
   $('cid-input').addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;
-    // Cancel any pending debounced search — Enter is an explicit
-    // action ("play this now"). If the value is a free-text query
-    // we still kick a synchronous search before Play so the user sees
-    // results immediately; play() itself bails on non-cid input
-    // anyway (parseId returns null and play surfaces "invalid id").
+    // Free-text value: search now rather than play (play() bails on a
+    // non-cid anyway).
     if (parseId($('cid-input').value) === null) { runSearch(); return; }
     play();
   });
@@ -273,8 +236,7 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
   $('autostart').onchange = saveAutostart;
   $('playback-target').onchange = () => persistPlaybackTarget($('playback-target').value);
   $('playback-move').onclick = () => movePlaybackToSelection();
-  // "Show all browser installs" is a UI-only preference (no server
-  // round trip) — store it in localStorage so it survives reloads.
+  // "Show all browser installs" — UI-only preference in localStorage.
   const showAllCb = $('show-all-browsers');
   if (showAllCb) {
     showAllCb.checked = localStorage.getItem(KEYS.SHOW_ALL_BROWSERS) === '1';
@@ -333,9 +295,8 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
       const storedVal = parseInt(localStorage.getItem(KEYS.PLAYBACK_BUFFER) || '0', 10);
       bufSlider.value = String(Math.min(Math.max(storedVal, 0), 60));
       if (bufOut) bufOut.textContent = bufferLabel(bufSlider.value, 60);
-      // Seed the server from localStorage on load, so the aceman CLI's
-      // buffer_secs is never stale even when the slider isn't touched this
-      // session. Fire-and-forget; harmless no-op if server config is off.
+      // Seed the server from localStorage on load so the aceman CLI's
+      // buffer_secs isn't stale when the slider goes untouched.
       api('/api/config', {
         method: 'POST',
         body: JSON.stringify({ buffer_secs: Math.min(Math.max(storedVal, 0), 60) }),
@@ -345,10 +306,8 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
         localStorage.setItem(KEYS.PLAYBACK_BUFFER, String(n));
         if (bufOut) bufOut.textContent = bufferLabel(n, 60);
       };
-      // On release, persist server-side too (config.json:buffer_secs) so the
-      // aceman CLI applies the same seconds to the external player's network
-      // cache. Fire-and-forget: localStorage already drives in-tab playback,
-      // and a disabled server config (404) is a harmless no-op here.
+      // On release, persist server-side (config.json:buffer_secs) so the
+      // aceman CLI applies the same seconds to the external player cache.
       bufSlider.onchange = () => {
         const n = Math.min(Math.max(parseInt(bufSlider.value, 10), 0), 60);
         api('/api/config', {
@@ -358,12 +317,9 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
       };
     }
   }
-  // (pb-stop button removed — Play button itself toggles to Stop.)
   $('fav-search').oninput = e => setFavSearch(e.target.value);
   $('fav-prev').onclick = favPagePrev;
   $('fav-next').onclick = favPageNext;
-  // The old #search-input is gone — the Watch card's unified
-  // #cid-input handles both modes (see the input listeners above).
   $('search-prev').onclick = searchPagePrev;
   $('search-next').onclick = searchPageNext;
   $('desktop-toggle').onclick = toggleDesktopEntry;
@@ -373,12 +329,8 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
   $('image-uninstall').onclick = uninstallImage;
   refreshImageStatus();
 
-  // Manual "Quit" — sends POST /api/shutdown which stops the engine
-  // container and tears down the web server. Explicit user action, so
-  // we take "stop everything" at face value: if the host shell happens
-  // to be mid-stream, the user is the one who clicked Quit and knows.
-  // (The idle-shutdown watcher is the cautious path — it never stops
-  // the engine, because the user didn't ask.)
+  // Manual "Quit" — POST /api/shutdown stops the engine container and
+  // tears down the web server. Explicit action, so we stop everything.
   $('server-shutdown').onclick = async () => {
     if (!(await showConfirm({
       title: 'Quit aceman',
@@ -402,13 +354,9 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
       '</div>';
   };
 
-  // Restart: opens a modal that lets the operator pick whether to
-  // rebuild the images before bouncing. Default is "just bounce" —
-  // rebuilding is opt-in because it (a) takes longer and (b) bakes
-  // whatever's currently on disk into the image, which only makes
-  // sense if the operator trusts those changes. The modal probes
-  // /api/restart/preflight to decide whether to paint the "new
-  // changes detected" warning next to the checkbox.
+  // Restart modal: optionally rebuild images before bouncing. Default
+  // is "just bounce" (rebuild is slower and bakes on-disk state into the
+  // image). Preflight decides whether to show the "new changes" warning.
   async function openRestartModal() {
     $('restart-modal').style.display = 'flex';
     $('restart-rebuild-cb').checked = false;
@@ -428,23 +376,17 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
   $('restart-go').onclick = async () => {
     const rebuild = $('restart-rebuild-cb').checked;
     closeRestartModal();
-    // Block the underlying UI behind the existing busy modal while
-    // the restart is in flight. Same overlay used for play/stop
-    // transitions and engine-startup waits, so the look is
-    // consistent. The page itself stays intact behind the backdrop
-    // (no document.body replacement) so a cancelled / timed-out
-    // restart leaves the operator on a working UI rather than a
-    // text-only error page they have to reload by hand.
+    // Block the UI behind the busy modal while the restart is in flight.
+    // The page stays intact behind the backdrop, so a timed-out restart
+    // leaves a working UI rather than a text-only error page.
     showBusy(rebuild
         ? 'Restarting and rebuilding images… this may take a minute.'
         : 'Restarting…');
     const btn = $('server-restart');
     btn.disabled = true;
     btn.textContent = 'Restarting…';
-    // Breadcrumb the post-reload init will consume to mark the engine
-    // as "settling" — otherwise the fresh JS has no transition to
-    // detect (engineState.last is empty on cold start) and shows the
-    // user a tempting "Start engine" button mid-restart.
+    // Breadcrumb consumed by the post-reload init to mark the engine
+    // "settling" (fresh JS has no transition to detect on cold start).
     sessionStorage.setItem(KEYS.RESTARTED_AT, String(Date.now()));
     try {
       await api('/api/restart', {
@@ -452,9 +394,8 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
         body: JSON.stringify({ rebuild }),
       });
     } catch (_) { /* connection close is expected */ }
-    // Poll until the new instance responds, then reload. The probe
-    // window is wider when rebuild=true because podman build (even
-    // with the layer cache hot) can add a handful of seconds.
+    // Poll until the new instance responds, then reload. Wider window
+    // for rebuild=true since podman build adds a few seconds.
     const start = Date.now();
     const timeoutMs = rebuild ? 180_000 : 30_000;
     const ping = async () => {
@@ -477,22 +418,15 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
   };
 
   // ---- logs tabs (single viewer, one stream at a time) ------------------
-  // Three tabs across the top of the row; clicking one opens the shared
-  // viewer below and starts polling that stream. Clicking the active
-  // tab again closes the viewer and stops polling. Status indicators on
-  // each tab update on every poll regardless of which stream is active
-  // (we briefly fetch all three on viewer-open) so the user sees the
-  // size of each log even without expanding them — kept lightweight via
-  // a single one-shot fetch per tab when the viewer first opens.
+  // Three tabs share one viewer: clicking a tab opens it and polls that
+  // stream; clicking the active tab closes it. Each tab shows its log
+  // size via a one-shot fetch when the viewer opens.
   let activeLogsKind = null;
   let logsTimer = null;
-  // Paused tabs hold their last-fetched buffer; closing them or
-  // switching away resets the flag (a freshly-opened tab always
-  // resumes auto-refresh by default).
+  // Explicit ⏸ pause for the active tab.
   let activeLogsPaused = false;
-  // Set when the user clicks inside the viewer to select text; cleared
-  // on mousedown outside. Separate from activeLogsPaused so the ⏸
-  // button continues to work as an explicit override.
+  // Auto-pause while the user has text selected in the viewer. Separate
+  // from activeLogsPaused so the ⏸ button stays an explicit override.
   let logsViewerAutoPaused = false;
   const logsViewer = $('logs-viewer');
   const logsTabs = Array.from(document.querySelectorAll('.logs-tab'));
@@ -511,8 +445,7 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
     if (!tab) return;
     const status = tab.querySelector('[data-role="logs-status"]');
     try {
-      // lines=1 keeps the response small for the per-tab size indicator —
-      // we just want size_bytes + available, not the body.
+      // lines=1: we only want size_bytes + available for the indicator.
       const r = await api('/api/logs?lines=1&kind=' + encodeURIComponent(kind));
       const kb = (r.size_bytes / 1024).toFixed(1);
       status.textContent = r.available ? `${kb} KB` : '(no log)';
@@ -535,8 +468,7 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
       if (wasAtBottom) logsViewer.scrollTop = logsViewer.scrollHeight;
       const kb = (r.size_bytes / 1024).toFixed(1);
       status.textContent = r.available ? `${kb} KB` : '(no log)';
-      // Neutral gray (the bare .status color) — size is informational,
-      // not a health signal, so the green "ok" tint was misleading.
+      // Neutral gray — size is informational, not a health signal.
       status.className = 'status';
     } catch (_) {
       status.textContent = '(fetch failed)';
@@ -588,10 +520,8 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
 
   for (const tab of logsTabs) {
     tab.addEventListener('click', (e) => {
-      // The pause/play sub-control toggles polling for the active tab
-      // without closing it. Without stopPropagation the parent button
-      // click would also fire and the tab would re-open (resetting
-      // paused state). Only meaningful when this tab IS the active one.
+      // The ⏸ sub-control toggles polling without closing the tab.
+      // stopPropagation keeps the parent click from re-opening it.
       const toggle = e.target.closest('[data-role="logs-toggle"]');
       if (toggle && activeLogsKind === tab.dataset.kind) {
         e.stopPropagation();
@@ -604,8 +534,8 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
     updateLogsStatus(tab.dataset.kind);
   }
 
-  // Auto-pause scroll when the user clicks inside the log viewer so
-  // they can select text without the refresh clobbering the selection.
+  // Auto-pause on click inside the viewer so a refresh doesn't clobber
+  // a text selection.
   logsViewer.addEventListener('mousedown', () => {
     if (!activeLogsKind || activeLogsPaused) return;
     logsViewerAutoPaused = true;
@@ -613,8 +543,7 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
     toggleActiveLogsPaused();
   });
 
-  // Resume as soon as the user clicks outside the viewer (but not on
-  // the ⏸ toggle — that button handles itself via the tab click handler).
+  // Resume on click outside the viewer (the ⏸ toggle handles itself).
   document.addEventListener('mousedown', (e) => {
     if (!logsViewerAutoPaused) return;
     if (logsViewer.contains(e.target)) return;
@@ -634,51 +563,33 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
     if (e.key === 'Escape' && $('reset-modal').style.display === 'flex') closeResetModal();
   });
 
-  // If the page was opened with ?play=<40-hex-cid>, the wrapper handed
-  // us an acestream:// URL via xdg-mime dispatch and the server
-  // translated it into this query string. Trigger Play after the favs
-  // list has settled (so the now-playing card can show the saved name
-  // if the cid is in favourites), then strip the query so a reload
-  // doesn't auto-play again.
+  // ?play=<40-hex-cid> means an acestream:// URL was dispatched here via
+  // xdg-mime. Strip the query (so reload doesn't re-play) and start.
   const _playCid = extractPlayCidFromUrl(window.location.search);
   if (_playCid) {
     history.replaceState(null, '', window.location.pathname);
     $('cid-input').value = _playCid;
-    // Desktop-entrypoint path: the user clicked an acestream:// link and
-    // the engine may not be up yet. Block the UI behind the busy modal
-    // until container + API are both healthy, then start playback.
-    // skipConfirm: this URL was either opened by /api/open-in-browser
-    // (already-confirmed hand-off) or pasted by the user; either way
-    // they already expressed intent. The browser-target confirm would
-    // be redundant noise.
+    // Engine may not be up yet — block behind the busy modal until
+    // container + API are healthy, then play. skipConfirm: opening this
+    // URL already expressed intent, so skip the browser-target confirm.
     (async () => {
       const ready = await waitForEngineReady(
           'Please wait while Aceman is getting ready…');
       if (ready) play({ skipConfirm: true });
     })();
   } else {
-    // No ?play= in URL: rehydrate the input from the last-played
-    // stash so a refresh in the middle of in-tab/browser playback
-    // doesn't blank the cid. The external-player rehydration path
-    // in refreshEngineStatus only fires when a host-side wrapper
-    // is alive; the in-browser case has no wrapper, so without
-    // this the user loses the cid even though we saved it on play().
+    // No ?play=: rehydrate the input from the last-played stash so a
+    // refresh during in-tab/browser playback doesn't blank the cid
+    // (the in-browser case has no wrapper to rehydrate from).
     const last = loadLastPlay(localStorage);
     if (last && last.cid && /^[a-f0-9]{40}$/.test(last.cid)) {
       $('cid-input').value = last.cid;
-      // Make the ✕ visible — refreshClearButton's display gate is
-      // input.value, so any code path that sets the value
-      // programmatically (rehydrate / play / fav click) needs to
-      // poke this for the button to actually appear.
+      // Programmatic value set doesn't trigger the ✕ gate; poke it.
       refreshClearButton();
       refreshSearchSection();
-      // Render the channel name in the now-playing card too — the
-      // stash carries the name/sub snapshot from play(), but if the
-      // cid showed up in favourites only AFTER that play (or was
-      // renamed since), resolveDisplayName against the current
-      // allFavs list wins. allFavs is filled by the parallel init
-      // IIFE's loadFavs await, so try twice: once immediately for
-      // the fast path, once after favs have settled.
+      // Render the channel name. resolveDisplayName prefers the current
+      // allFavs entry (renames win) over the stash snapshot. allFavs may
+      // still be loading, so render now and again once favs settle.
       const renderName = () => {
         const { name, sub } =
             resolveDisplayName(last, allFavs, last.cid);
@@ -690,14 +601,11 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
         updateSaveButton();
       };
       renderName();
-      // Backup pass for the case where allFavs was still empty on
-      // first render (init IIFE hadn't awaited /api/favs yet).
-      setTimeout(renderName, 800);
+      setTimeout(renderName, 800);  // retry once favs have loaded
     }
   }
 
-  // Re-align the search results panel whenever the play card resizes
-  // (viewport change, sidebar appearing/disappearing, zoom).
+  // Re-align the search results panel when the play card resizes.
   if (window.ResizeObserver) {
     const playCard = $('play-card');
     if (playCard) new ResizeObserver(() => alignSearchToInput()).observe(playCard);
@@ -724,14 +632,11 @@ import { mode, isWslMode, setMode, setWslMode } from './shared/runtime.js';
       const vw = window.innerWidth, vh = window.innerHeight;
       const bw = document.body.clientWidth;
       const dpr = window.devicePixelRatio || 1;
-      // Two SEPARATE markers, server-injected:
-      //   build  — content hash of the served page + web backend (.py).
-      //            The reliable "am I on the version I just rebuilt?"
-      //            signal; present in every mode, independent of podman.
-      //   commit — git SHA (+ dirty). A nicety; may be empty (dirty tree
-      //            with no env, or a broker recreate that didn't carry it)
-      //            WITHOUT meaning the build is wrong — that's why it's its
-      //            own field, not folded into the hash.
+      // Two server-injected markers:
+      //   build  — content hash of the served page + web backend (.py);
+      //            the version signal, independent of podman.
+      //   commit — git SHA (+ dirty); may be empty without meaning the
+      //            build is wrong, hence a separate field.
       // NOTE: never reference the literal injection sentinels here — the
       // server's page-wide replace would clobber them and break the guard.
       const build = el.dataset.build || '';

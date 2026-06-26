@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { describeDesktopShortcutStatus } from '../js/lib/cards/desktop_shortcut_status.js';
+import { describeDesktopShortcutStatus } from '../js/domains/desktop/lib/desktop_shortcut_status.js';
 
 test('null input → unavailable card with disabled Install button', () => {
   const v = describeDesktopShortcutStatus(null);

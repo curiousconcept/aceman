@@ -6,7 +6,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { daysSinceLabel } from '../js/lib/favourites/last_watched_label.js';
+import { daysSinceLabel } from '../js/domains/favourites/lib/last_watched_label.js';
 
 const NOW = Date.parse('2026-06-15T12:00:00Z');
 

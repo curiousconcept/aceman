@@ -7,7 +7,7 @@
 
 import { $, showError } from '../../shared/dom.js';
 import { api } from '../../shared/api.js';
-import { formatResetReport } from '../../lib/factory_reset_report.js';
+import { formatResetReport } from './lib/factory_reset_report.js';
 
 export function openResetModal() {
   $('reset-modal').style.display = 'flex';

@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MIN_QUERY_LEN, shouldSearch, normaliseQuery, buildSearchUrl,
-} from '../js/lib/search_query.js';
+} from '../js/domains/search/lib/search_query.js';
 
 test('MIN_QUERY_LEN matches upstream policy (2 chars)', () => {
   assert.equal(MIN_QUERY_LEN, 2);

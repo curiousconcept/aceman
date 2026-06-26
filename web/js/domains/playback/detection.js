@@ -10,7 +10,7 @@
 // playback is its own module.
 
 import { api } from '../../shared/api.js';
-import { browserLabel, detectBrowserFromNav } from '../../lib/browsers.js';
+import { browserLabel, detectBrowserFromNav } from './lib/browsers.js';
 import { renderPlaybackTargets } from './playback.js';
 
 export let detectedPlayers = [];   // [{name, source}]

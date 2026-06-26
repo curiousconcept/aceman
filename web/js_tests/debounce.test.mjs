@@ -6,7 +6,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { debounce } from '../js/lib/debounce.js';
+import { debounce } from '../js/domains/search/lib/debounce.js';
 
 function fakeTimers() {
   let nextId = 1;

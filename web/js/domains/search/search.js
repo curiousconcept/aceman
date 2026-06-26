@@ -14,9 +14,9 @@
 import { $, showError, showBusy, hideBusy } from '../../shared/dom.js';
 import { api } from '../../shared/api.js';
 import { parseId } from '../../lib/playback/content_id_parser.js';
-import { debounce } from '../../lib/debounce.js';
+import { debounce } from './lib/debounce.js';
 import { paginate } from '../../lib/pagination.js';
-import { shouldSearch, normaliseQuery, buildSearchUrl } from '../../lib/search_query.js';
+import { shouldSearch, normaliseQuery, buildSearchUrl } from './lib/search_query.js';
 import { findFavouriteByCid } from '../../lib/favourites/favourite_lookup.js';
 import { hideHistorySection } from '../history/history.js';
 import { allFavs, instaSave, updateSaveButton } from '../favourites/favourites.js';

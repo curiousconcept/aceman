@@ -7,7 +7,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { decidePlaybackPath } from '../js/lib/playback/playback_decision.js';
+import { decidePlaybackPath } from '../js/domains/playback/lib/playback_decision.js';
 
 test('external mode → external-scheme with encoded target', () => {
   const p = decidePlaybackPath({

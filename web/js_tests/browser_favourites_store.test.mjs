@@ -6,7 +6,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createBrowserFavouritesStore } from '../js/lib/favourites/browser_favourites_store.js';
+import { createBrowserFavouritesStore } from '../js/domains/favourites/lib/browser_favourites_store.js';
 
 function fakeStorage() {
   const m = new Map();

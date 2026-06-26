@@ -30,7 +30,7 @@
 //
 // Pure. No DOM, no globals.
 
-import { browserLabel } from '../browsers.js';
+import { browserLabel } from './browsers.js';
 import { encodeTarget } from './playback_target.js';
 
 const FALLBACK_WARNING =

@@ -14,12 +14,12 @@
 
 import { $, showError, showBusy, hideBusy, showConfirm } from '../../shared/dom.js';
 import { api } from '../../shared/api.js';
-import { createBrowserFavouritesStore } from '../../lib/favourites/browser_favourites_store.js';
-import { daysSinceLabel } from '../../lib/favourites/last_watched_label.js';
-import { uniqueFavouriteName } from '../../lib/favourites/favourite_names.js';
-import { describeSaveButton } from '../../lib/favourites/save_favourite_button.js';
+import { createBrowserFavouritesStore } from './lib/browser_favourites_store.js';
+import { daysSinceLabel } from './lib/last_watched_label.js';
+import { uniqueFavouriteName } from './lib/favourite_names.js';
+import { describeSaveButton } from './lib/save_favourite_button.js';
 import { findFavouriteByCid } from '../../lib/favourites/favourite_lookup.js';
-import { extractExistingName } from '../../lib/api_errors.js';
+import { extractExistingName } from './lib/api_errors.js';
 import { paginate } from '../../lib/pagination.js';
 import { runModal } from '../../lib/modal.js';
 import { markSearchRowSaved, refreshSearchResultsIfAny } from '../search/search.js';

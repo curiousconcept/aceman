@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatResetReport } from '../js/lib/factory_reset_report.js';
+import { formatResetReport } from '../js/domains/factory-reset/lib/factory_reset_report.js';
 
 test('empty report → empty string', () => {
   assert.equal(formatResetReport({}), '');

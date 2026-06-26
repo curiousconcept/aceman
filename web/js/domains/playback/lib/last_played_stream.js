@@ -13,8 +13,8 @@
 //
 // `cid` is required; `name` and `sub` are optional display strings.
 
-import { KEYS } from '../storage_keys.js';
-import { HEX40 } from './content_id_parser.js';
+import { KEYS } from '../../../lib/storage_keys.js';
+import { HEX40 } from '../../../lib/playback/content_id_parser.js';
 
 export function saveLastPlay(storage, { cid, name, sub } = {}) {
   if (!storage || typeof cid !== 'string' || !HEX40.test(cid)) return false;

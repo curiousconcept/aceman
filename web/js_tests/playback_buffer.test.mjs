@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import {
   BUFFER_MIN, BUFFER_MAX,
   clampBuffer, bufferedAhead, bufferReady, bufferLabel,
-} from '../js/lib/playback/playback_buffer.js';
+} from '../js/domains/playback/lib/playback_buffer.js';
 
 // TimeRanges stand-in: a list of [start, end] pairs.
 function ranges(...pairs) {

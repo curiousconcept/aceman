@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { describeFavouritesStorageBadge } from '../js/lib/favourites/favourites_storage_badge.js';
+import { describeFavouritesStorageBadge } from '../js/domains/favourites/lib/favourites_storage_badge.js';
 
 test('sqlite mode with a path → DB-path tooltip', () => {
   const v = describeFavouritesStorageBadge('sqlite', '/home/user/.config/aceman/favorites.db');

@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractExistingName } from '../js/lib/api_errors.js';
+import { extractExistingName } from '../js/domains/favourites/lib/api_errors.js';
 
 test('extracts from a 409 api.js Error (server collision shape)', () => {
   const err = Object.assign(new Error('duplicate'), {

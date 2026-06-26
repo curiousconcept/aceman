@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   encodeTarget, parseTarget, isExternal, isBrowser, isBareBrowser,
-} from '../js/lib/playback/playback_target.js';
+} from '../js/domains/playback/lib/playback_target.js';
 
 test('encodeTarget — browser with no name → bare "browser"', () => {
   assert.equal(encodeTarget('browser', '', ''), 'browser');

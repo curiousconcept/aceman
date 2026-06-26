@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { describeEngineToggle } from '../js/lib/engine/engine_start_stop_toggle.js';
+import { describeEngineToggle } from '../js/domains/playback/lib/engine/engine_start_stop_toggle.js';
 
 const HEALTHY = { container: true, up: true };
 const DEGRADED = { container: true, up: false };

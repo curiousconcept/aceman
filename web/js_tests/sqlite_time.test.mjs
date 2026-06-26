@@ -7,7 +7,7 @@ process.env.TZ = 'UTC';
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatSqliteUtcToLocal } from '../js/lib/sqlite_time.js';
+import { formatSqliteUtcToLocal } from '../js/domains/history/lib/sqlite_time.js';
 
 test('empty / missing → empty string', () => {
   assert.equal(formatSqliteUtcToLocal(''), '');

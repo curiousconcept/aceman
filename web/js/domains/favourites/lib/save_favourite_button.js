@@ -12,7 +12,7 @@
 //
 // Pure. No DOM, no globals.
 
-import { findFavouriteByCid } from './favourite_lookup.js';
+import { findFavouriteByCid } from '../../../lib/favourites/favourite_lookup.js';
 
 export function describeSaveButton(current, favs) {
   if (!current) return HIDDEN;

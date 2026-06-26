@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { describeMoveButton } from '../js/lib/playback/move_stream_button.js';
+import { describeMoveButton } from '../js/domains/playback/lib/move_stream_button.js';
 
 test('nothing playing → hidden', () => {
   const v = describeMoveButton('', 'browser', 'This browser tab');

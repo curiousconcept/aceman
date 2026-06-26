@@ -6,7 +6,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gpuQueryParams } from '../js/lib/gpu/gpu_params.js';
+import { gpuQueryParams } from '../js/domains/gpu/lib/gpu_params.js';
 
 const ALL_ON = { encode: true, deinterlace: true, scale: '1080' };
 

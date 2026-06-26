@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { uniqueFavouriteName, pickFavouriteName } from '../js/lib/favourites/favourite_names.js';
+import { uniqueFavouriteName, pickFavouriteName } from '../js/domains/favourites/lib/favourite_names.js';
 
 test('uniqueFavouriteName — passes through a clean unused label', () => {
   assert.equal(uniqueFavouriteName('My channel', []), 'My channel');

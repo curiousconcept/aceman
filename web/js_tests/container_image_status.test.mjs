@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { describeContainerImageStatus } from '../js/lib/cards/container_image_status.js';
+import { describeContainerImageStatus } from '../js/domains/image/lib/container_image_status.js';
 
 test('null input → unavailable card (e.g. fetch failed)', () => {
   const v = describeContainerImageStatus(null);

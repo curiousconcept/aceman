@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPlaybackOptions } from '../js/lib/playback/playback_options.js';
+import { buildPlaybackOptions } from '../js/domains/playback/lib/playback_options.js';
 
 const FF = { name: 'firefox', source: 'system' };
 const FF_FLATPAK = { name: 'firefox', source: 'flatpak' };

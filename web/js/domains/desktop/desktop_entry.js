@@ -11,7 +11,7 @@
 import { $, showError } from '../../shared/dom.js';
 import { api } from '../../shared/api.js';
 import { runModal } from '../../lib/modal.js';
-import { describeDesktopShortcutStatus } from '../../lib/cards/desktop_shortcut_status.js';
+import { describeDesktopShortcutStatus } from './lib/desktop_shortcut_status.js';
 import { isWslMode } from '../../shared/runtime.js';
 
 export async function refreshDesktopEntry() {

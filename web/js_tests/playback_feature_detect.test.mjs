@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { inBrowserPlaybackSupported } from '../js/lib/playback/playback_feature_detect.js';
+import { inBrowserPlaybackSupported } from '../js/domains/playback/lib/playback_feature_detect.js';
 
 test('mpegts present + isSupported() truthy → true', () => {
   const fakeWindow = { mpegts: { isSupported: () => true } };

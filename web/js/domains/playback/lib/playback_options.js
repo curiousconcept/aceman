@@ -17,7 +17,7 @@
 // available — caller drives the DOM off `groups` and reads
 // `hasAnyTarget` / `hintMessage` for the "no targets" gate.
 
-import { browserLabel } from '../browsers.js';
+import { browserLabel } from './browsers.js';
 import { encodeTarget } from './playback_target.js';
 
 const NO_TARGETS_HINT =

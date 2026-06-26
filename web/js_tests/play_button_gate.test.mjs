@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { describePlayButtonGate } from '../js/lib/engine/play_button_gate.js';
+import { describePlayButtonGate } from '../js/domains/playback/lib/engine/play_button_gate.js';
 
 test('container + up → enabled, no hint', () => {
   const v = describePlayButtonGate({ container: true, up: true });

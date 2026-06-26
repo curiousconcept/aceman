@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { describeSaveButton } from '../js/lib/favourites/save_favourite_button.js';
+import { describeSaveButton } from '../js/domains/favourites/lib/save_favourite_button.js';
 
 const CID = 'a'.repeat(40);
 

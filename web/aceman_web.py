@@ -231,7 +231,10 @@ def _bundle_js() -> str:
     #                      on lib + shared, are depended on by main.js.
     #   4. js/main.js    — the bootstrap: wires the DOM + init IIFE; last.
     # rglob (not glob) so grouped subdirectories under each dir are picked
-    # up (lib/playback/, domains/gpu/, …).
+    # up (lib/playback/, domains/gpu/, …). Within the domains pass, files
+    # under a per-domain lib/ subdir sort FIRST (sort key 0) so a domain's
+    # business file can reference its own lib at top level — same "libs
+    # before consumers" guarantee the central lib_dir gives globally.
     lib_dir = _HERE / "js" / "lib"
     shared_dir = _HERE / "js" / "shared"
     domains_dir = _HERE / "js" / "domains"
@@ -258,8 +261,14 @@ def _bundle_js() -> str:
         parts.append(f"// ---- {label} ----")
         parts.append(_strip_module_syntax(src))
 
+    def _domain_order(p):
+        rel = p.relative_to(domains_dir)
+        return (0 if "lib" in rel.parts else 1, str(rel))
+
     for base, prefix in ((lib_dir, "lib"), (shared_dir, "shared"), (domains_dir, "domains")):
-        for p in (sorted(base.rglob("*.js")) if base.exists() else []):
+        files = base.rglob("*.js") if base.exists() else []
+        files = sorted(files, key=_domain_order) if base is domains_dir else sorted(files)
+        for p in files:
             _add(p.read_text(encoding="utf-8"), f"{prefix}/{p.relative_to(base)}")
     _add((_HERE / "js" / "main.js").read_text(encoding="utf-8"), "main.js")
     # Wrap the whole thing in an IIFE so module-scope variables don't
