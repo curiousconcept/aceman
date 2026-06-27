@@ -14,8 +14,9 @@ Watch [Ace Stream](https://acestream.org) content from a **sandboxed
 engine** — a rootless Podman container, managed and played through a
 browser UI (a stdlib-Python web app), or with playback delegated to your
 own Linux VLC/mpv (Flatpak supported). The browser app has **Favourites**,
-watch **History**, and built-in stream **Search** (a server-side proxy to
-`search-ace.stream`). Close the tab and it **auto-shuts down** — after a
+watch **History**, built-in stream **Search** (a server-side proxy to
+`search-ace.stream`), and an adjustable playback **buffer**. Close the tab
+and it **auto-shuts down** — after a
 short idle timeout the web server stops itself and the engine container,
 so nothing keeps running (or eating bandwidth) in the background. A
 host-side allow-list broker means the web never touches `podman` or
