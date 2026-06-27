@@ -21,7 +21,10 @@
 
 FROM docker.io/library/python:3.11-slim-bookworm
 
-# ffmpeg is the only system dependency the web actually exec()s.
+# ffmpeg is what the web exec()s to transcode. vainfo is here for the
+# broker's VA-API probe: the broker runs `podman exec <web> vainfo` so the
+# GPU capability is read from the driver THIS image carries, not the host's
+# (Fedora ships a codec-stripped iHD on the host that hides H.264 encode).
 # --no-install-recommends keeps the image lean (no docs / X libs).
 # rm -rf /var/lib/apt/lists shaves another ~40 MB.
 RUN apt-get update \
@@ -29,6 +32,7 @@ RUN apt-get update \
        ffmpeg \
        mesa-va-drivers libva-drm2 mesa-vulkan-drivers \
        intel-media-va-driver i965-va-driver \
+       vainfo \
        curl \
     && rm -rf /var/lib/apt/lists/*
 

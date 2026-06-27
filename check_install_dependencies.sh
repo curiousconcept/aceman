@@ -190,6 +190,37 @@ install_players_native() {
   fi
 }
 
+# ---- browser H.264 advisory ------------------------------------------------
+# Browser playback decodes H.264 in the BROWSER, not in our container. Fedora
+# (notably the atomic variants) ships a codec-stripped ffmpeg
+# (libavcodec-free) with NO H.264, so every stream fails with
+# MEDIA_ERR_DECODE. Detect and point at the fix. Advisory only — not a
+# blocker, and unrelated to the transcode ffmpeg which lives in the image.
+check_browser_h264() {
+  section "Browser H.264 decode"
+  if command -v ffmpeg >/dev/null 2>&1; then
+    # awk consumes the whole stream (no early exit) so grep -q's SIGPIPE
+    # can't trip `set -o pipefail` into a false "missing" result. Matches
+    # the native libavcodec h264 decoder — the one the browser's MSE path
+    # uses (libopenh264/h264_* hwaccels don't cover it).
+    if ffmpeg -hide_banner -decoders 2>/dev/null \
+         | awk '$2 == "h264" { found = 1 } END { exit !found }'; then
+      ok "system ffmpeg has the H.264 decoder"
+      return
+    fi
+    warn "system ffmpeg has NO H.264 decoder (codec-stripped build)"
+  elif command -v rpm >/dev/null 2>&1 && rpm -q libavcodec-free >/dev/null 2>&1; then
+    warn "libavcodec-free present — codec-stripped ffmpeg, no H.264"
+  else
+    ok "no codec-stripped ffmpeg detected"
+    return
+  fi
+  warn "Browser playback will fail with MEDIA_ERR_DECODE. Fix with either:"
+  warn "  • a Flatpak browser (bundles its own H.264), or"
+  warn "  • full ffmpeg from RPM Fusion (see the README: 'Fedora / atomic:"
+  warn "    enabling H.264 for browser playback')."
+}
+
 offer_players() {
   [ -t 0 ] || return 0   # never prompt non-interactively
   section "Optional: external players (mpv + VLC)"
@@ -206,6 +237,7 @@ offer_players() {
   esac
 }
 
+check_browser_h264
 offer_players
 
 section "Done."

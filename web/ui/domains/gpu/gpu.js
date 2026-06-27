@@ -12,6 +12,7 @@ import { mountAcemanSelect } from '../../shared/dropdown.js';
 import { notifyRestartNeeded } from '../playback/index.js';
 import { KEYS } from '../../lib/storage_keys.js';
 import { gpuQueryParams } from './lib/gpu_params.js';
+import { gpuEncodeHint } from './lib/gpu_hint.js';
 
 let _gpuCaps = null;  // populated by initGpuCard() at startup
 
@@ -81,9 +82,7 @@ export async function initGpuCard() {
   const encodeEl = $('gpu-encode');
   if (!h264Ok) {
     encodeEl.disabled = true;
-    $('gpu-hint').textContent =
-      'GPU encode unavailable — install libva-utils + mesa-va-drivers and confirm ' +
-      'vainfo shows VAEntrypointEncSlice for H.264.';
+    $('gpu-hint').textContent = gpuEncodeHint(caps.vaapi && caps.vaapi.driver);
   }
 
   // Wrap the upscale select with the same custom widget used for

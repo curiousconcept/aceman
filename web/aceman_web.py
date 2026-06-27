@@ -648,9 +648,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
-        # Long-cache: the file is bundled with the app and changes only
-        # on rebuild. Browser revalidation is unnecessary.
-        self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        # No-store everywhere: this is a localhost single-user app, so
+        # browser caching saves nothing and only causes stale-asset
+        # confusion after a rebuild. Matches the HTML/JSON policy.
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
 
