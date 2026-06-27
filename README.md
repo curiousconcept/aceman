@@ -118,6 +118,44 @@ a player (the dependency script can install one).
 ./aceman engine status         # container + API + memory + cache
 ```
 
+#### Fedora / atomic: enabling H.264 for browser playback
+
+Fedora — especially the atomic variants (Silverblue, Kinoite) — ships a
+**codec-stripped ffmpeg** whose `libavcodec-free` has **no H.264**. Browser
+playback then fails on every stream with `MEDIA_ERR_DECODE` /
+`FFmpegDataDecoder: Couldn't open avcodec`. That's the **browser** unable to
+decode H.264 — aceman is serving the stream fine. Two fixes:
+
+**A — Flatpak browser (no host changes).** Flatpak Firefox/Chrome bundle
+their own H.264:
+
+```bash
+flatpak install -y flathub org.mozilla.firefox
+flatpak run org.mozilla.firefox http://127.0.0.1:8765/
+```
+
+**B — full ffmpeg on the host.** Enable RPM Fusion, then swap the stripped
+libs for the full build (works on atomic via `override remove`):
+
+```bash
+# 1. enable RPM Fusion (free + nonfree), then reboot
+rpm-ostree install \
+  https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm \
+  https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+systemctl reboot
+
+# 2. swap stripped → full ffmpeg, then reboot
+rpm-ostree override remove \
+  ffmpeg-free libavdevice-free \
+  libavcodec-free libavfilter-free libavformat-free libavutil-free \
+  libpostproc-free libswresample-free libswscale-free \
+  --install ffmpeg --install ffmpeg-libs
+systemctl reboot
+```
+
+If depsolve names another `*-free` package, add it to the remove list and
+retry — that's the whole game.
+
 ### Windows (WSL2)
 
 Grab the repo ZIP —
