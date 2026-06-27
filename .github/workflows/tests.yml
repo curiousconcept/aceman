@@ -1,10 +1,10 @@
 name: tests
 
-# Every push to main, and every pull request. The pull_request trigger
-# is what produces the status checks a branch-protection rule can require.
+# Run on every push (any branch) and on pull requests. Push runs give
+# instant feedback without needing a PR; the resulting check is matched
+# by commit SHA, so it still satisfies branch protection later.
 on:
   push:
-    branches: [main]
   pull_request:
 
 # Least privilege: the suites only read the checkout.
