@@ -221,3 +221,10 @@ copyrighted material** — the Ace Stream engine is downloaded by the user
 from the official source, and any content you stream is your own
 responsibility. "Ace Stream" and related marks belong to their respective
 owners.
+
+We are also **not affiliated with or endorsed by VLC (VideoLAN) or mpv**.
+They're suggested throughout only because they're well established and play
+Ace Stream output natively — not as any kind of partnership. "VLC",
+"VideoLAN", "mpv", and related marks belong to their respective owners. If
+another well-established, community-trusted player offers advanced features
+worth supporting, suggestions are welcome.
