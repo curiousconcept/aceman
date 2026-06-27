@@ -48,12 +48,16 @@ run_js() {
   # matching path keeps the tests' relative imports (`../domains/foo.js`)
   # working.
   #
+  # node --test wants explicit test FILES, not a directory (a directory
+  # arg is treated as a module to load → "Cannot find module"). The glob
+  # expands on the host (cwd is PROJECT_ROOT) to paths that are valid
+  # inside the container too, since web/ui is bound at the matching path.
   podman run --rm --read-only \
     --tmpfs /tmp \
     -v "$PROJECT_ROOT/web/ui":/work/web/ui:ro,Z \
     -w /work \
     "$JS_IMAGE" \
-    node --test web/ui/tests
+    node --test web/ui/tests/*.test.mjs
 }
 
 # Pre-flight: how many JS tests would we be running? The number lives
