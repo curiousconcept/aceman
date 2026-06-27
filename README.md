@@ -42,14 +42,20 @@ anything host-related directly.
 
 Requires rootless **Podman ≥ 4.0**, **Python ≥ 3.9** (stdlib only),
 **bash ≥ 4**, and **curl** + **jq**. The web UI plays in your **browser**,
-so **no media player is required**. A player (**VLC ≥ 3.0** or
-**mpv ≥ 0.34**) is *optional* — only for the external-player CLI path
-(`./aceman`), as an alternative to browser playback.
+so **no media player is required** — a player is *optional*, only for the
+external-player CLI path.
 
 ```bash
 git clone https://github.com/curiousconcept/aceman.git
 cd aceman
+./check_install_dependencies.sh
 ```
+
+`check_install_dependencies.sh` detects your package manager (apt,
+dnf/yum, pacman, zypper, apk, rpm-ostree), installs anything missing,
+and can finish by installing **mpv + VLC** — your choice of **Flatpak**
+(locked down to **no filesystem access**: only network + audio + video,
+all the external-player path needs) or **native** distro packages.
 
 **One-time:** download the Ace Stream engine tarball (proprietary, not
 shipped here) from **https://docs.acestream.net/products/#linux** — the
@@ -57,15 +63,33 @@ shipped here) from **https://docs.acestream.net/products/#linux** — the
 `engine/container/dist/engine.tar.gz`. Details + hash verification:
 [`engine/container/README.md`](engine/container/README.md).
 
-Then:
+Then pick how you want to watch:
+
+#### aceman web — browser playback (default)
+
+Plays in your browser; no media player needed. Carries Favourites, watch
+History, Search, and auto-shutdown when the tab closes.
 
 ```bash
 ./aceman_web                 # web UI  → http://127.0.0.1:8765/
-# or
-./aceman <content_id>        # external player (40-hex id or acestream://…)
+./aceman_web --stop          # stop the web server and the engine
+./aceman_web --hard-refresh  # drop cached images; rebuild on next launch
 ```
 
-Player install hints:
+#### aceman — external-player CLI
+
+Hands a stream straight to VLC/mpv and tears the engine session down
+cleanly on exit, so nothing keeps seeding after the player closes. Needs
+a player (the dependency script can install one).
+
+```bash
+./aceman <content_id>          # 40-hex id, acestream://…, or a saved fav name
+./aceman --url <transport_url> # play a .acelive / transport URL
+./aceman fav list              # list saved favourites
+./aceman engine status         # container + API + memory + cache
+```
+
+Prefer system packages over Flatpak? Player install hints:
 
 | Distro            | Command                                                          |
 |-------------------|------------------------------------------------------------------|
@@ -102,6 +126,10 @@ Deliberately small — beyond what your OS already ships, this is the whole list
   present on desktop Linux. On WSL, `install.bat` installs `podman git jq`
   for you.
 
+Run [`check_install_dependencies.sh`](check_install_dependencies.sh) to
+verify and install these in one step across apt / dnf / yum / pacman /
+zypper / apk / rpm-ostree.
+
 **Inside the container images (built locally — nothing else touches your host):**
 - *aceman-web* image (`python:3.11-slim`): **ffmpeg** for the in-browser
   stream transcode, plus `mesa-va-drivers` / `libva-drm2` /
@@ -114,13 +142,16 @@ Deliberately small — beyond what your OS already ships, this is the whole list
 
 **Vendored in-tree (version-pinned + SHA-256 checked):**
 - **mpegts.js** (Apache-2.0) — browser playback. See
-  [`web/vendor/README.md`](web/vendor/README.md).
+  [`web/ui/domains/playback/vendor/README.md`](web/ui/domains/playback/vendor/README.md).
 
 **Optional:**
 - **VLC** or **mpv** — only for the external-player path. In-browser
   playback needs no player, but the web UI's Play links can also
   **delegate** to an external player (via the `acestream://` handler), the
   same external-player path the `aceman` CLI uses.
+  `check_install_dependencies.sh` can install them as Flatpaks locked to
+  **no filesystem access** (`--nofilesystem=host:reset`) — aceman only
+  feeds the player an HTTP stream URL, so it never needs disk.
 
 **Our** code adds no `pip install`, no `npm install`, no lock files — the
 web and broker are stdlib-Python only, and the host footprint is Podman
@@ -178,8 +209,8 @@ aceman's own code is **MIT** — see [`LICENSE`](LICENSE). Exceptions:
 
 - **Ace Stream engine** — proprietary, not included; you download it
   yourself and it's governed by Ace Stream's own terms.
-- **`web/vendor/mpegts.min.js`** — bundled third-party library under
-  **Apache-2.0** (see its header and [`web/vendor/README.md`](web/vendor/README.md)).
+- **`web/ui/domains/playback/vendor/mpegts.min.js`** — bundled third-party library under
+  **Apache-2.0** (see its header and [`web/ui/domains/playback/vendor/README.md`](web/ui/domains/playback/vendor/README.md)).
 
 ## Disclaimer
 
@@ -190,3 +221,10 @@ copyrighted material** — the Ace Stream engine is downloaded by the user
 from the official source, and any content you stream is your own
 responsibility. "Ace Stream" and related marks belong to their respective
 owners.
+
+We are also **not affiliated with or endorsed by VLC (VideoLAN) or mpv**.
+They're suggested throughout only because they're well established and play
+Ace Stream output natively — not as any kind of partnership. "VLC",
+"VideoLAN", "mpv", and related marks belong to their respective owners. If
+another well-established, community-trusted player offers advanced features
+worth supporting, suggestions are welcome.
