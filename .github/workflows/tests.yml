@@ -1,0 +1,53 @@
+name: tests
+
+# Every push to main, and every pull request. The pull_request trigger
+# is what produces the status checks a branch-protection rule can require.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: the suites only read the checkout.
+permissions:
+  contents: read
+
+# A newer push to the same branch/PR cancels the in-flight run.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+# Three independent jobs run in parallel, each its own red/green status
+# check. One suite failing no longer hides the others' results.
+jobs:
+  broker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      # stdlib-only by design — no `pip install`.
+      - working-directory: broker
+        run: python -m unittest discover -s tests -t .
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - working-directory: web
+        run: python -m unittest discover -s tests -t .
+
+  js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      # node --test wants explicit files, not a directory (a dir arg is
+      # read as a module → "Cannot find module"). The glob expands in the
+      # runner's bash shell before node sees it.
+      - run: node --test web/ui/tests/*.test.mjs

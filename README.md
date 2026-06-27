@@ -4,6 +4,12 @@
 
 <h1 align="center">aceman</h1>
 
+<p align="center">
+  <a href="https://github.com/curiousconcept/aceman/actions/workflows/tests.yml">
+    <img src="https://github.com/curiousconcept/aceman/actions/workflows/tests.yml/badge.svg?branch=main" alt="tests">
+  </a>
+</p>
+
 Watch [Ace Stream](https://acestream.org) content from a **sandboxed
 engine** — a rootless Podman container, managed and played through a
 browser UI (a stdlib-Python web app), or with playback delegated to your
