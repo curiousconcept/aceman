@@ -15,7 +15,7 @@ runs this thin `.command`/handler kit, which drives the guest via
 `limactl shell` and reaches the web/engine over forwarded ports. The
 broker and root wrappers are unchanged for macOS, and should stay that
 way. (One deliberate `web/` change exists: `run.command` launches with
-`--remote-desktop`, which hides Linux-desktop-only UI cards — the
+`--no-local-desktop`, which hides Linux-desktop-only UI cards — the
 App-launcher and native player target — exactly as WSL does. That's
 expected; those cards can't act on a desktop the user reaches through
 this kit.) If you find yourself wanting to add `darwin` branches to the

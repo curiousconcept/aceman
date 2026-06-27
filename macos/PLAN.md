@@ -124,8 +124,8 @@ Going light means no `broker/` or root-wrapper changes — but there is
 affordances (the App-launcher card, the native player target) when the
 browser is on a different host. That was keyed on a WSL-specific flag
 (`is_wsl`); under Lima the user's real desktop is equally elsewhere, so
-the same cards must hide. The flag was generalized to **`remote_desktop`**
-(`aceman_web --remote-desktop`, env `ACE_REMOTE_DESKTOP`): WSL auto-detect
+the same cards must hide. The flag was generalized to **`no_local_desktop`**
+(`aceman_web --no-local-desktop`, env `ACE_NO_LOCAL_DESKTOP`): WSL auto-detect
 sets it, and `macos/run.command` passes it explicitly. We don't *auto-detect*
 Lima — a Lima guest is plain Ubuntu with no reliable kernel marker like
 WSL's `/proc/sys/kernel/osrelease`, and `--wsl` also carries WSL-only

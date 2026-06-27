@@ -12,7 +12,7 @@ limactl shell aceman -- bash -lc 'mkdir -p ~/.cache/aceman; : > ~/.cache/aceman/
 
 # Server in its OWN Terminal window = real TTY = live, unbuffered logs.
 # --host 0.0.0.0 so Lima forwards the published port to macOS localhost.
-# --remote-desktop so the UI hides Linux-desktop-only affordances (the
+# --no-local-desktop so the UI hides Linux-desktop-only affordances (the
 # App-launcher card, the native player target) — the user's real desktop
 # is macOS, reached via this kit, not the Linux guest. Same UI mode WSL
 # uses. The trailing read keeps the window open after the server stops so
@@ -20,7 +20,7 @@ limactl shell aceman -- bash -lc 'mkdir -p ~/.cache/aceman; : > ~/.cache/aceman/
 osascript <<OSA >/dev/null
 tell application "Terminal"
     activate
-    do script "limactl shell aceman -- bash -lc 'cd ~/Projects/aceman && ./aceman_web --host 0.0.0.0 --port $PORT --remote-desktop; echo; echo [server stopped - press Enter to close]; read _'"
+    do script "limactl shell aceman -- bash -lc 'cd ~/Projects/aceman && ./aceman_web --host 0.0.0.0 --port $PORT --no-local-desktop; echo; echo [server stopped - press Enter to close]; read _'"
 end tell
 OSA
 
