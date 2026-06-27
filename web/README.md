@@ -83,5 +83,6 @@ stderr with ISO-timestamp tags:
 ```
 
 Code layout, routing, and the broker facades are documented inline under
-`web/aceman/`. Pure JS modules live in `web/js/lib/` with tests in
-`web/js_tests/`.
+`web/aceman/`. The browser tier lives under `web/ui/` (per-domain js + css
++ html); pure modules live in `web/ui/lib/` and each domain's `lib/`, with
+tests in `web/ui/tests/`.

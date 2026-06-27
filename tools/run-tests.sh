@@ -41,20 +41,19 @@ run_js() {
     echo "podman not found on PATH — skipping JS suite." >&2
     return 1
   fi
-  # The Node container only needs to see web/js (the lib modules) and
-  # web/js_tests (the test files). Mounting the rest of the repo would
-  # expose secrets / build artefacts / the broker socket to a
-  # third-party image for no reason. Each subtree gets its own
-  # read-only bind at the matching path inside the container so the
-  # tests' relative imports (`../js/lib/foo.js`) keep working.
+  # The Node container only needs to see web/ui — the browser tier, which
+  # now holds the modules AND their tests (web/ui/tests). Mounting the rest
+  # of the repo would expose secrets / build artefacts / the broker socket
+  # to a third-party image for no reason. The single read-only bind at the
+  # matching path keeps the tests' relative imports (`../domains/foo.js`)
+  # working.
   #
   podman run --rm --read-only \
     --tmpfs /tmp \
-    -v "$PROJECT_ROOT/web/js":/work/web/js:ro,Z \
-    -v "$PROJECT_ROOT/web/js_tests":/work/web/js_tests:ro,Z \
+    -v "$PROJECT_ROOT/web/ui":/work/web/ui:ro,Z \
     -w /work \
     "$JS_IMAGE" \
-    node --test web/js_tests
+    node --test web/ui/tests
 }
 
 # Pre-flight: how many JS tests would we be running? The number lives
@@ -62,8 +61,8 @@ run_js() {
 # tells us before we even spin the container up. Useful for the user
 # to see "what would run" without paying the podman start-up cost.
 js_test_count() {
-  if [ -d "$PROJECT_ROOT/web/js_tests" ]; then
-    grep -RhE "^test\(" "$PROJECT_ROOT/web/js_tests" 2>/dev/null | wc -l
+  if [ -d "$PROJECT_ROOT/web/ui/tests" ]; then
+    grep -RhE "^test\(" "$PROJECT_ROOT/web/ui/tests" 2>/dev/null | wc -l
   else
     echo 0
   fi

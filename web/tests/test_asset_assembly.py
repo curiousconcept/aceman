@@ -23,21 +23,21 @@ class AssetAssemblyTests(unittest.TestCase):
     def setUp(self):
         # Re-assemble fresh rather than trust the import-time cache.
         self.html = aceman_web._expand_includes(
-            (_HERE / "html" / "index.html").read_text(encoding="utf-8"))
+            (_HERE / "ui" / "index.html").read_text(encoding="utf-8"))
         self.css = aceman_web._expand_includes(
-            (_HERE / "css" / "style.css").read_text(encoding="utf-8"))
+            (_HERE / "ui" / "style.css").read_text(encoding="utf-8"))
 
     def test_no_unresolved_markers(self):
         for blob in (self.html, self.css):
             self.assertNotIn("@include", blob)
 
     def test_every_shell_include_resolves_to_a_file(self):
-        for shell in ("html/index.html", "css/style.css"):
+        for shell in ("ui/index.html", "ui/style.css"):
             text = (_HERE / shell).read_text(encoding="utf-8")
             rels = _INCLUDE.findall(text)
             self.assertTrue(rels, f"{shell} has no @include markers")
             for rel in rels:
-                self.assertTrue((_HERE / "js" / rel).is_file(),
+                self.assertTrue((_HERE / "ui" / rel).is_file(),
                                 f"{shell}: missing partial {rel}")
 
     def test_served_page_has_no_leftover_sentinels(self):

@@ -50,5 +50,5 @@ sha256sum -c mpegts.min.js.sha256
 If you want to bump to a newer release: fetch the new tarball, replace
 the file, regenerate the hash with `sha256sum mpegts.min.js > mpegts.min.js.sha256`,
 and update the version row in this README. The `<script src=>` in
-`web/html/index.html` doesn't need to change — it references the
+`web/ui/index.html` doesn't need to change — it references the
 allow-list key, not the upstream version.

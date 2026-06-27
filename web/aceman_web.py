@@ -136,7 +136,7 @@ def _strip_module_syntax(src: str) -> str:
     can be concatenated into a single classic <script> block.
 
     The lib modules are written as proper ESM (so Node's test runner
-    can load them as-is under ``web/js_tests/``); the browser still
+    can load them as-is under ``web/ui/tests/``); the browser still
     receives one inlined IIFE bundle to keep the existing
     "single-template, single-request" page-load shape.
 
@@ -236,20 +236,20 @@ def _bundle_js() -> str:
     # siblings in a single scope. ESM only exists for the Node test runner.
     #
     # Order matters because of that flattening:
-    #   1. js/lib/**     — the pure, tested primitives (createApi, parseId, …)
-    #   2. js/shared/**  — technical substrate + generic UI (dom, api,
+    #   1. ui/lib/**     — the pure, tested primitives (createApi, parseId, …)
+    #   2. ui/shared/**  — technical substrate + generic UI (dom, api,
     #                      dropdown, notice); depends on lib.
-    #   3. js/domains/** — business slices (gpu, image, desktop, …); depend
+    #   3. ui/domains/** — business slices (gpu, image, desktop, …); depend
     #                      on lib + shared, are depended on by main.js.
-    #   4. js/main.js    — the bootstrap: wires the DOM + init IIFE; last.
+    #   4. ui/main.js    — the bootstrap: wires the DOM + init IIFE; last.
     # rglob (not glob) so grouped subdirectories under each dir are picked
     # up (lib/playback/, domains/gpu/, …). Within the domains pass, files
     # under a per-domain lib/ subdir sort FIRST (sort key 0) so a domain's
     # business file can reference its own lib at top level — same "libs
     # before consumers" guarantee the central lib_dir gives globally.
-    lib_dir = _HERE / "js" / "lib"
-    shared_dir = _HERE / "js" / "shared"
-    domains_dir = _HERE / "js" / "domains"
+    lib_dir = _HERE / "ui" / "lib"
+    shared_dir = _HERE / "ui" / "shared"
+    domains_dir = _HERE / "ui" / "domains"
     parts: "list[str]" = []
     seen: "dict[str, str]" = {}  # name → first file that declared it
 
@@ -282,7 +282,7 @@ def _bundle_js() -> str:
         files = sorted(files, key=_domain_order) if base is domains_dir else sorted(files)
         for p in files:
             _add(p.read_text(encoding="utf-8"), f"{prefix}/{p.relative_to(base)}")
-    _add((_HERE / "js" / "main.js").read_text(encoding="utf-8"), "main.js")
+    _add((_HERE / "ui" / "main.js").read_text(encoding="utf-8"), "main.js")
     # Wrap the whole thing in an IIFE so module-scope variables don't
     # leak into window. Mirrors what ESM gives the test runner.
     return "(() => {\n" + "\n".join(parts) + "\n})();"
@@ -371,14 +371,14 @@ def _expand_includes(text: str) -> str:
 
     A line that is exactly ``<!--@include domains/x/y.html-->`` (html) or
     ``/*@include domains/x/y.css*/`` (css) is replaced, in place, by the
-    referenced file's bytes (resolved under web/js/). "In place" matters:
+    referenced file's bytes (resolved under web/ui/). "In place" matters:
     the partial lands exactly where its block used to live, so DOM order
     and CSS cascade are preserved — the assembled output is byte-identical
     to a single hand-written file. Markers may nest; we loop to a fixed
     point. Each partial owns the styles/markup of one slice, colocated
-    with that slice's JS under web/js/domains/<x>/ (or web/js/shared/).
+    with that slice's JS under web/ui/domains/<x>/ (or web/js/shared/).
     """
-    base = _HERE / "js"
+    base = _HERE / "ui"
 
     def repl(m: "re.Match") -> str:
         rel = m.group(1)
@@ -396,8 +396,8 @@ def _expand_includes(text: str) -> str:
 
 
 def _load_index_template() -> str:
-    html = _expand_includes((_HERE / "html" / "index.html").read_text(encoding="utf-8"))
-    css = _expand_includes((_HERE / "css" / "style.css").read_text(encoding="utf-8"))
+    html = _expand_includes((_HERE / "ui" / "index.html").read_text(encoding="utf-8"))
+    css = _expand_includes((_HERE / "ui" / "style.css").read_text(encoding="utf-8"))
     js = _bundle_js()
     # Hash is computed over the assembled sources (pre-injection) so it's
     # deterministic and never includes itself.
