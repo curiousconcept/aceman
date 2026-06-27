@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>aceman-handler</string>
+	<key>CFBundleDisplayName</key>
+	<string>aceman</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.curiousconcept.aceman.handler</string>
+	<key>CFBundleVersion</key>
+	<string>1.0</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<!-- osacompile names the applet executable "applet"; keep this in
+	     sync if a future macOS changes that (tester confirms). -->
+	<key>CFBundleExecutable</key>
+	<string>applet</string>
+	<!-- Background agent: no Dock icon, no menu bar. -->
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAppleScriptEnabled</key>
+	<true/>
+	<!-- The whole point: claim the acestream:// URL scheme. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Ace Stream</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>acestream</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
