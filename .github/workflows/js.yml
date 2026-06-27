@@ -1,0 +1,25 @@
+name: js
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: js-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      # node --test wants explicit files, not a directory (a dir arg is
+      # read as a module → "Cannot find module"). The glob expands in the
+      # runner's bash shell before node sees it.
+      - run: node --test web/ui/tests/*.test.mjs

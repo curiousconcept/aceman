@@ -5,9 +5,9 @@
 <h1 align="center">aceman</h1>
 
 <p align="center">
-  <a href="https://github.com/curiousconcept/aceman/actions/workflows/tests.yml">
-    <img src="https://github.com/curiousconcept/aceman/actions/workflows/tests.yml/badge.svg?branch=main" alt="tests">
-  </a>
+  <a href="https://github.com/curiousconcept/aceman/actions/workflows/broker.yml"><img src="https://github.com/curiousconcept/aceman/actions/workflows/broker.yml/badge.svg?branch=main" alt="broker"></a>
+  <a href="https://github.com/curiousconcept/aceman/actions/workflows/web.yml"><img src="https://github.com/curiousconcept/aceman/actions/workflows/web.yml/badge.svg?branch=main" alt="web"></a>
+  <a href="https://github.com/curiousconcept/aceman/actions/workflows/js.yml"><img src="https://github.com/curiousconcept/aceman/actions/workflows/js.yml/badge.svg?branch=main" alt="js"></a>
 </p>
 
 Watch [Ace Stream](https://acestream.org) content from a **sandboxed
