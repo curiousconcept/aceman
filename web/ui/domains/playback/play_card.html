@@ -29,6 +29,11 @@
       <div id="history-list"></div>
     </div>
     <div id="search-section" style="display:none">
+      <div id="search-sources" title="Pick which sources to search. Results from all enabled sources are merged and de-duplicated.">
+        <span class="field-label">Search</span>
+        <label><input type="checkbox" id="src-aceproxy"> search-ace.stream</label>
+        <label><input type="checkbox" id="src-engine"> Engine</label>
+      </div>
       <div class="pager" id="search-pager" style="display:none">
         <button id="search-prev">‹ Prev</button>
         <span class="status" id="search-info"></span>

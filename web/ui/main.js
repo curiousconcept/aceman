@@ -86,6 +86,9 @@ import { parseId, loadPlayers, loadBrowsers, detectCurrentBrowser, detectedPlaye
   try {
     setCfg(await api('/api/config'));
     $('autostart').checked = !!cfg.engine_autostart;
+    // Search sources (proxy on by default, engine opt-in).
+    $('src-aceproxy').checked = cfg.search_aceproxy !== false;
+    $('src-engine').checked = !!cfg.search_engine;
   } catch (_) { /* config endpoint may be disabled */ }
 
   // Favourites first; engine status second so the page doesn't flash
@@ -188,6 +191,22 @@ import { parseId, loadPlayers, loadBrowsers, detectCurrentBrowser, detectedPlaye
   $('fav-next').onclick = favPageNext;
   $('search-prev').onclick = searchPagePrev;
   $('search-next').onclick = searchPageNext;
+  // Search-source toggles: persist the flag, then re-run the current query
+  // so results reflect the new source set immediately.
+  const saveSearchSrc = async (key, el) => {
+    try {
+      setCfg(await api('/api/config', {
+        method: 'POST', body: JSON.stringify({ [key]: el.checked }),
+      }));
+    } catch (e) {
+      showError(e.message);
+      el.checked = !el.checked;   // revert on failure
+      return;
+    }
+    runSearch();
+  };
+  $('src-aceproxy').onchange = () => saveSearchSrc('search_aceproxy', $('src-aceproxy'));
+  $('src-engine').onchange = () => saveSearchSrc('search_engine', $('src-engine'));
   $('desktop-toggle').onclick = toggleDesktopEntry;
   refreshDesktopEntry();
 

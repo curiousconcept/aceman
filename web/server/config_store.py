@@ -32,6 +32,10 @@ class Config:
         # Buffer slider (seconds). Drives the in-tab pre-roll AND, via the
         # aceman CLI, the external player's network cache (VLC/mpv).
         "buffer_secs": int,
+        # Search sources (multi-source search). The proxy is on by
+        # default (existing behaviour); engine-local search is opt-in.
+        "search_aceproxy": bool,
+        "search_engine": bool,
     }
 
     def __init__(self, path: pathlib.Path):
@@ -45,6 +49,8 @@ class Config:
             "default_browser": "",
             "default_browser_source": "",
             "buffer_secs": 0,
+            "search_aceproxy": True,
+            "search_engine": False,
         }
         if path.is_file():
             try:

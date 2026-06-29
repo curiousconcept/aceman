@@ -1,0 +1,18 @@
+/* Search-source toggles at the top of the results section. Compact,
+   centered, wraps on narrow widths. */
+#search-sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: .25rem .8rem;
+  margin: .25rem 0 .5rem;
+  font-size: .85rem;
+}
+
+#search-sources label {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  white-space: nowrap;
+}

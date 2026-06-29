@@ -9,12 +9,18 @@ from ..search import SearchProxy
 
 
 def get_storage_mode(req: Request, ctx: RouteContext) -> Response:
-    # search_sources is a list so the UI tooltip can show one per
-    # line; today there's a single upstream, adding more later is
-    # just appending to this list — no UI change.
+    # search_sources lists every enabled + available source (the UI shows
+    # one per line). Same enable/availability rule the search route uses
+    # (routes/search._enabled_sources).
+    def _flag(key, default):
+        v = ctx.config.get(key, default) if ctx.config else default
+        return v if isinstance(v, bool) else default
+
     sources: "list[str]" = []
-    if ctx.search_proxy:
+    if _flag("search_aceproxy", True) and ctx.search_proxy:
         sources.append(SearchProxy.BASE)
+    if _flag("search_engine", False) and ctx.engine:
+        sources.append(ctx.engine.rstrip("/") + "/search")
     return Response.json(200, {
         "mode": "sqlite" if ctx.store else "browser",
         "engine": ctx.engine,

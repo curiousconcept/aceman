@@ -11,8 +11,8 @@ The upstream is treated as fully adversarial:
   * Fixed endpoint URL; **any** redirect is refused.
   * Response body capped at ``MAX_RESPONSE_BYTES``; strict UTF-8 + JSON.
   * Items without a valid 40-hex content_id are dropped.
-  * Names scrubbed of every band of dangerous codepoints (see
-    ``_DANGEROUS``).
+  * Names scrubbed of every band of dangerous codepoints (see the
+    shared ``clean_str`` / ``DANGEROUS``).
   * Result count capped at ``MAX_RESULTS``.
   * Outgoing query is scrubbed and length-capped before send.
 """
@@ -34,6 +34,32 @@ from .log_util import _log, _sanitize_msg
 
 class SearchError(Exception):
     pass
+
+
+# Codepoints stripped from any string handed back to the frontend or
+# forwarded upstream — belt-and-suspenders against a hostile source
+# influencing what the browser renders. Shared by EVERY search source
+# (proxy + engine) so the hardening is identical wherever a result came
+# from. Explicit \uXXXX escapes, not raw glyphs (a literal U+2028 is
+# invisible in source but reads as U+0020 under some tools).
+DANGEROUS = re.compile(
+    "["
+    "\u0000-\u001f\u007f-\u009f"
+    "\u200b-\u200f"
+    "\u2028-\u202e"
+    "\u2060"
+    "\u2066-\u2069"
+    "\ufeff"
+    "]"
+)
+
+
+def clean_str(raw: object, max_len: int) -> str:
+    """Scrub dangerous codepoints, trim, length-cap. The single sanitiser
+    shared by all search sources — a non-string drops to ``""``."""
+    if not isinstance(raw, str):
+        return ""
+    return DANGEROUS.sub("", raw).strip()[:max_len]
 
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -58,26 +84,6 @@ class SearchProxy:
     MAX_RESULTS = 50
     MAX_NAME_LEN = 200
     TIMEOUT = 8.0
-
-    # Codepoints we strip from any string we hand back to the frontend
-    # or forward to the upstream. Belt-and-suspenders against a hostile
-    # upstream trying to influence what the browser renders.
-    #
-    # Written with explicit \uXXXX escapes — not raw glyphs — because a
-    # literal U+2028 LINE SEPARATOR in source code is invisible to
-    # readers and editors but reads as U+0020 SPACE under some text
-    # tools, which would silently widen the class to "every printable
-    # ASCII char".
-    _DANGEROUS = re.compile(
-        "["
-        "\u0000-\u001f\u007f-\u009f"
-        "\u200b-\u200f"
-        "\u2028-\u202e"
-        "\u2060"
-        "\u2066-\u2069"
-        "\ufeff"
-        "]"
-    )
 
     def __init__(self) -> None:
         ctx = ssl.create_default_context()
@@ -168,17 +174,11 @@ class SearchProxy:
 
     @classmethod
     def _clean_query(cls, raw: object) -> str:
-        if not isinstance(raw, str):
-            return ""
-        q = cls._DANGEROUS.sub("", raw).strip()
-        return q[: cls.MAX_QUERY_LEN]
+        return clean_str(raw, cls.MAX_QUERY_LEN)
 
     @classmethod
     def _clean_name(cls, raw: object) -> str:
-        if not isinstance(raw, str):
-            return ""
-        s = cls._DANGEROUS.sub("", raw).strip()
-        return s[: cls.MAX_NAME_LEN]
+        return clean_str(raw, cls.MAX_NAME_LEN)
 
     @classmethod
     def _clean_item(cls, item: object) -> "dict | None":
