@@ -12,7 +12,7 @@ const VLC_FLATPAK = { name: 'vlc', source: 'flatpak' };
 const MPV = { name: 'mpv', source: 'system' };
 const MPV_FLATPAK = { name: 'mpv', source: 'flatpak' };
 
-test('default state — only "This tab" with no browser sniff', () => {
+test('default state — only "This Tab" with no browser sniff', () => {
   const v = buildPlaybackOptions({
     detectedPlayers: [], detectedBrowsers: [],
     currentBrowser: '', showAll: false, inBrowserSupported: true,
@@ -21,29 +21,29 @@ test('default state — only "This tab" with no browser sniff', () => {
   assert.equal(v.groups[0].label, null);
   assert.deepEqual(v.groups[0].options, [{
     value: 'browser',
-    text: 'This tab',
+    text: 'This Tab',
     disabled: false,
   }]);
   assert.equal(v.hasAnyTarget, true);
 });
 
-test('"This tab" label is the same regardless of currentBrowser', () => {
+test('"This Tab" label is the same regardless of currentBrowser', () => {
   const v = buildPlaybackOptions({
     detectedPlayers: [], detectedBrowsers: [],
     currentBrowser: 'firefox', showAll: false, inBrowserSupported: true,
   });
-  assert.equal(v.groups[0].options[0].text, 'This tab');
+  assert.equal(v.groups[0].options[0].text, 'This Tab');
 });
 
-test('"This tab" label is the same with showAll on', () => {
+test('"This Tab" label is the same with showAll on', () => {
   const v = buildPlaybackOptions({
     detectedPlayers: [], detectedBrowsers: [],
     currentBrowser: 'firefox', showAll: true, inBrowserSupported: true,
   });
-  assert.equal(v.groups[0].options[0].text, 'This tab');
+  assert.equal(v.groups[0].options[0].text, 'This Tab');
 });
 
-test('"This tab" is disabled with a helpful suffix when MSE missing', () => {
+test('"This Tab" is disabled with a helpful suffix when MSE missing', () => {
   const v = buildPlaybackOptions({
     detectedPlayers: [], detectedBrowsers: [],
     currentBrowser: '', showAll: false, inBrowserSupported: false,
@@ -62,11 +62,11 @@ test('Other-browsers group skips entries matching current browser', () => {
   });
   // Both firefox entries (system + flatpak) are hidden — UA can't
   // tell them apart, so we hide both not just one.
-  const others = v.groups.find(g => g.label === 'Other browsers');
-  assert.ok(others, 'an Other browsers group is present');
+  const others = v.groups.find(g => g.label === 'Other Browsers');
+  assert.ok(others, 'an Other Browsers group is present');
   assert.equal(others.options.length, 1);
   assert.equal(others.options[0].value, 'browser|google-chrome|system');
-  assert.equal(others.options[0].text, 'Google Chrome (system)');
+  assert.equal(others.options[0].text, 'Google Chrome (System)');
 });
 
 test('"Show all" reveals every detected browser install', () => {
@@ -77,7 +77,7 @@ test('"Show all" reveals every detected browser install', () => {
     showAll: true,
     inBrowserSupported: true,
   });
-  const others = v.groups.find(g => g.label === 'Other browsers');
+  const others = v.groups.find(g => g.label === 'Other Browsers');
   assert.equal(others.options.length, 3);
   assert.deepEqual(
     others.options.map(o => o.value),
@@ -85,7 +85,7 @@ test('"Show all" reveals every detected browser install', () => {
      'browser|google-chrome|system']);
 });
 
-test('External players group uses external|name|source encoding', () => {
+test('External Players group uses external|name|source encoding', () => {
   const v = buildPlaybackOptions({
     detectedPlayers: [VLC, MPV],
     detectedBrowsers: [],
@@ -93,10 +93,10 @@ test('External players group uses external|name|source encoding', () => {
     showAll: false,
     inBrowserSupported: true,
   });
-  const ext = v.groups.find(g => g.label === 'External players');
+  const ext = v.groups.find(g => g.label === 'External Players');
   assert.deepEqual(ext.options, [
-    { value: 'external|vlc|system', text: 'vlc (system)', disabled: false },
-    { value: 'external|mpv|system', text: 'mpv (system)', disabled: false },
+    { value: 'external|vlc|system', text: 'VLC (System)', disabled: false },
+    { value: 'external|mpv|system', text: 'MPV (System)', disabled: false },
   ]);
 });
 
@@ -105,7 +105,7 @@ test('Other-browsers / External-players groups omitted when empty', () => {
     detectedPlayers: [], detectedBrowsers: [],
     currentBrowser: '', showAll: false, inBrowserSupported: true,
   });
-  assert.equal(v.groups.length, 1, 'only the "This tab" group');
+  assert.equal(v.groups.length, 1, 'only the "This Tab" group');
 });
 
 test('No usable target anywhere → hasAnyTarget false + a guidance hint', () => {
@@ -137,7 +137,7 @@ test('hasAnyTarget true when ONLY a non-current detected browser exists', () => 
 test('zero-arg call defaults to no targets — does not crash', () => {
   const v = buildPlaybackOptions();
   assert.equal(v.hasAnyTarget, false);
-  // "This tab" is still there, disabled, with the unsupported tail.
+  // "This Tab" is still there, disabled, with the unsupported tail.
   assert.equal(v.groups[0].options[0].disabled, true);
 });
 
@@ -149,7 +149,7 @@ test('duplicate players deduped by name when showAll=false', () => {
     showAll: false,
     inBrowserSupported: true,
   });
-  const ext = v.groups.find(g => g.label === 'External players');
+  const ext = v.groups.find(g => g.label === 'External Players');
   assert.equal(ext.options.length, 2, 'one entry per player name');
   assert.equal(ext.options[0].value, 'external|vlc|system');
   assert.equal(ext.options[1].value, 'external|mpv|system');
@@ -163,7 +163,7 @@ test('showAll=true reveals every player install including duplicates', () => {
     showAll: true,
     inBrowserSupported: true,
   });
-  const ext = v.groups.find(g => g.label === 'External players');
+  const ext = v.groups.find(g => g.label === 'External Players');
   assert.equal(ext.options.length, 3);
   assert.deepEqual(
     ext.options.map(o => o.value),

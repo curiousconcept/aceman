@@ -30,6 +30,7 @@ import { KEYS } from '../../lib/storage_keys.js';
 import { saveLastPlay, loadLastPlay, clearLastPlay } from './lib/last_played_stream.js';
 import { inBrowserPlaybackSupported } from './lib/playback_feature_detect.js';
 import { buildPlaybackOptions } from './lib/playback_options.js';
+import { buildLanStreamUrl } from './lib/lan_url.js';
 import { decidePlaybackPath } from './lib/playback_decision.js';
 import { targetValueToConfig } from './lib/playback_config.js';
 import { clampBuffer, bufferedAhead, bufferReady } from './lib/playback_buffer.js';
@@ -427,9 +428,55 @@ export function setTabTitle(name) {
   document.title = name ? `${base} - ${name}` : base;
 }
 
+// Show/hide the now-playing id chip off the current stream. The chip
+// SEES the full id (the title only shows the name), and clicking it does
+// the same as clicking the title — see copyPlayingCid.
+function renderNowPlayingId() {
+  const el = $('now-playing-id');
+  if (!el) return;
+  if (current && current.cid) {
+    el.textContent = 'Ace ID: ' + current.cid;
+    el.style.display = '';
+  } else {
+    el.textContent = '';
+    el.style.display = 'none';
+  }
+}
+
+// One reused, auto-dismissing top toast for the small copy confirmations
+// (Ace ID, device link). Single id → only ever one banner, one timer.
+let _toastTimer = null;
+function _toast(message) {
+  showNotice({ id: 'aceman-toast', message });
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => dismissNotice('aceman-toast'), 2500);
+}
+
+// Shared click handler for the playback title AND the now-playing id chip:
+// copy the playing cid to the clipboard and put it back in the Watch box
+// (so searching never loses sight of what's playing), with a brief top
+// notice. External playback has no video card, so the title is the path
+// that matters there; both routes behave identically.
+export function copyPlayingCid() {
+  if (!current || !current.cid) return;
+  const cid = current.cid;
+  $('cid-input').value = cid;
+  refreshClearButton();
+  refreshDeviceStream();
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(cid)
+      .then(() => _toast('Saved Ace ID to clipboard'))
+      .catch(() => _toast('Ace ID put back in the box (clipboard blocked)'));
+  } else {
+    _toast('Ace ID put back in the box (clipboard unavailable)');
+  }
+}
+
 export function setNowPlayingName(primary, sub) {
   const el = $('playback-title');
   el.textContent = '';
+  // Only offer the click-to-copy affordance while a stream is playing.
+  el.classList.toggle('clickable', !!primary);
   if (!primary) {
     // Card title falls back to the same string the empty-state HTML
     // uses — "Watch". Anything else here desyncs the title from the
@@ -480,8 +527,17 @@ export async function play(opts = {}) {
   saveLastPlay(localStorage, { cid, name: displayName, sub: displaySub });
   setNowPlayingName(displayName, displaySub);
   $('now-playing').style.display = 'block';
+  renderNowPlayingId();
   updateSaveButton();
   refreshPlaybackMoveButton();
+
+  // "Another device" target: nothing plays locally — the device's own
+  // player opens the stream. Just (re)render the QR/URL for this cid.
+  // Single playback: the device IS the session.
+  if (deviceTargetSelected) {
+    renderDeviceStream();
+    return;
+  }
 
   // Stamp last_played so the "watched N days ago" badge updates without a
   // refresh. Browser-mode is local; sqlite-mode goes through the server.
@@ -633,6 +689,10 @@ export function renderPlaybackTargets() {
   // Apply the group tree to the <select>. Top-level options (label
   // === null) attach directly; everything else gets an <optgroup>.
   for (const group of view.groups) {
+    // No-local-desktop (WSL / macOS VM): host-side browsers + players
+    // aren't reachable from the remote browser, so offer only "This tab"
+    // (the null-label group) plus "Another device" (appended below).
+    if (noLocalDesktop && group.label !== null) continue;
     const parent = group.label ? _addOptgroup(sel, group.label) : sel;
     for (const o of group.options) {
       const opt = document.createElement('option');
@@ -643,13 +703,26 @@ export function renderPlaybackTargets() {
     }
   }
 
+  // "Another device" is always available (engine-only — needs no local
+  // player). Selecting it exposes the engine + shows a QR on the player
+  // card; see onPlaybackTargetChange.
+  const devGroup = _addOptgroup(sel, 'Other Devices');
+  const devOpt = document.createElement('option');
+  devOpt.value = 'device';
+  devOpt.textContent = 'Another Device (e.g. smartphone with VLC)';
+  devGroup.appendChild(devOpt);
+  sel.disabled = false;
+
   if (!view.hasAnyTarget) {
-    sel.disabled = true;
-    hint.textContent = view.hintMessage;
-    hint.className = 'gate-hint warn';
+    // No local browser/player, but "Another device" still works — land
+    // the dropdown there instead of a dead, disabled control.
+    sel.value = 'device';
+    deviceTargetSelected = true;
+    renderDeviceStream();
+    refreshPlaybackMoveButton();
+    refreshPlayGate();
     return;
   }
-  sel.disabled = false;
 
   // In no-local-desktop mode the Player card is hidden — but we still need
   // a sane default selection for the Play button to use. Every detected
@@ -675,6 +748,14 @@ export function renderPlaybackTargets() {
       && cfg && cfg.playback_mode !== 'browser';
   if (noLocalDesktopDrift) {
     persistPlaybackTarget('browser', /*silent=*/true);
+  }
+  // Keep the dropdown on the transient device target across re-renders
+  // (it's never persisted to cfg, so the wanted-selection above can't
+  // pick it). Otherwise remember the real target for modal-cancel revert.
+  if (deviceTargetSelected) {
+    sel.value = 'device';
+  } else {
+    lastNonDeviceTarget = sel.value;
   }
   refreshPlaybackMoveButton();
 }
@@ -961,6 +1042,12 @@ export async function movePlaybackToSelection() {
 
 // ---- engine status + controls ------------------------------------------
 let pendingEngineAction = false; // suppress polling label flicker while a button is mid-action
+let pendingLanAction = false;    // same, for the LAN-expose toggle's in-flight POST
+let lanExposed = false;          // last-known engine LAN-exposure state (from status)
+let lanIp = '';                  // stashed from engine status for the device URL
+let lanPort = 0;
+let deviceTargetSelected = false;// 'Another device' is the active "Play in" target (transient)
+let lastNonDeviceTarget = '';    // restore the dropdown if the expose modal is cancelled
 
 // Settling-window state machine — see ./lib/engine_state.js. The
 // transitions (running→down, held-enough exit, healthy clear) are
@@ -1051,6 +1138,7 @@ export async function refreshEngineStatus() {
       $('cid-input').value = cid;
       setNowPlayingName(displayName, displaySub);
       $('now-playing').style.display = 'block';
+      renderNowPlayingId();
       updateSaveButton();
     }
     refreshPlaybackMoveButton();
@@ -1081,16 +1169,264 @@ export async function refreshEngineStatus() {
   hint.textContent = view.hint.text;
   hint.className = view.hint.className;
 
+  renderEngineLanToggle(s);
+  // Keep the player-card QR fresh as the cid / lan state changes.
+  if (deviceTargetSelected) renderDeviceStream();
   refreshPlayGate();
+}
+
+// Engine card: reflect the broker's LAN-exposure state on the manual
+// expose/unexpose checkbox + its warning, and stash lan_ip/lan_port for
+// the device URL. The QR lives on the player card (renderDeviceStream),
+// never here.
+function renderEngineLanToggle(s) {
+  lanExposed = !!s.lan_exposed;
+  if (s.lan_ip != null) lanIp = s.lan_ip;
+  if (s.lan_port != null) lanPort = s.lan_port;
+  const cb = $('lan-expose');
+  if (!cb) return;
+  // Don't fight the user's click while their POST is in flight.
+  if (!pendingLanAction) cb.checked = lanExposed;
+  $('lan-expose-warn').style.display = lanExposed ? '' : 'none';
+}
+
+// Manual engine-card checkbox. Toggles exposure directly; the inline
+// warning is enough here — the confirm modal is reserved for the
+// player-card "Another device" target (the guided path).
+export async function toggleLanExpose() {
+  const cb = $('lan-expose');
+  const enabled = cb.checked;
+  pendingLanAction = true;
+  cb.disabled = true;
+  showError('');
+  // Toggling the bind re-spawns the engine — block with the shared overlay.
+  showBusy(enabled
+    ? 'Restarting engine to expose it on your network…'
+    : 'Restarting engine to close network access…');
+  try {
+    const s = await api('/api/engine/lan-expose', {
+      method: 'POST', body: JSON.stringify({ enabled }),
+    });
+    renderEngineLanToggle(s);
+    if (!enabled && deviceTargetSelected) {
+      // Unexposing while "Another device" is the target would leave a
+      // dead link — fall back to local playback in this tab.
+      deviceTargetSelected = false;
+      hideDeviceStream();
+      const sel = $('playback-target');
+      if (sel) sel.value = 'browser';
+      lastNonDeviceTarget = 'browser';
+      refreshPlayGate();
+      persistPlaybackTarget('browser');
+    } else if (deviceTargetSelected) {
+      renderDeviceStream();
+    }
+  } catch (e) {
+    showError(e.message);
+    cb.checked = !enabled; // revert UI on failure
+  } finally {
+    pendingLanAction = false;
+    cb.disabled = false;
+    hideBusy();
+  }
+}
+
+// Player card: render (or hide) the off-box stream URL + QR for the cid
+// in focus while the "Another device" target is selected. Reads the
+// lan_ip/lan_port stashed from the last engine status. Shows a guiding
+// hint instead of a dead link when there's no usable URL yet.
+function renderDeviceStream() {
+  const box = $('device-stream');
+  if (!box) return;
+  if (!deviceTargetSelected) {
+    box.style.display = 'none';
+    box.dataset.url = '';
+    return;
+  }
+  box.style.display = '';
+  // Scope the QR to the Watch box only — clearing it (the X) hides the QR.
+  // Deliberately NOT falling back to `current` (last played): that stays
+  // set so the now-playing card + search-while-playing keep working, but
+  // a cleared field shouldn't keep a stale QR alive.
+  const cid = parseId($('cid-input').value) || '';
+  const url = buildLanStreamUrl({ lanExposed, lanIp, lanPort, cid });
+  const hint = $('device-stream-hint');
+  const link = $('device-stream-link');
+  const qr = $('device-stream-qr');
+  if (!url) {
+    box.dataset.url = '';
+    link.textContent = '';
+    link.setAttribute('href', '#');
+    link.style.display = 'none';
+    qr.innerHTML = '';
+    hint.textContent = !lanExposed
+      ? 'Engine not exposed yet — tick "Expose engine on local network" on the engine card.'
+      : 'Select stream from search or from favourites.';
+    return;
+  }
+  hint.textContent = 'Scan the QR on the other device — or click it to copy the link.';
+  // Only rebuild the QR when the URL actually changes.
+  if (box.dataset.url === url) return;
+  box.dataset.url = url;
+  // New stream → stash the link but keep it hidden until the QR is clicked.
+  link.href = url;
+  link.textContent = url;
+  link.style.display = 'none';
+  qr.innerHTML = '';
+  // `qrcode` is the vendored global (its own <script>). Guard so a
+  // blocked/failed vendor load degrades gracefully (the link still works
+  // once revealed, even without a rendered QR).
+  if (typeof qrcode === 'function') {
+    const q = qrcode(0, 'M');
+    q.addData(url);
+    q.make();
+    qr.innerHTML = q.createSvgTag({ cellSize: 4, margin: 1, scalable: true });
+  }
+}
+
+// Click the QR to reveal the link below it and copy it to the clipboard;
+// click again to hide it (the clipboard is left as-is — browsers can't
+// selectively un-copy). No-op until there's a usable link.
+export function toggleDeviceLink() {
+  const link = $('device-stream-link');
+  if (!link) return;
+  const url = link.getAttribute('href');
+  if (!url || url === '#') return;
+  if (link.style.display !== 'none') {   // shown → hide
+    link.style.display = 'none';
+    return;
+  }
+  link.style.display = '';
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url)
+      .then(() => _toast('Device link copied to clipboard'))
+      .catch(() => _toast('Link shown (clipboard blocked)'));
+  } else {
+    _toast('Link shown (clipboard unavailable)');
+  }
+}
+
+function hideDeviceStream() {
+  const box = $('device-stream');
+  if (box) { box.style.display = 'none'; box.dataset.url = ''; }
+}
+
+// Re-render the device QR/link off the current Watch-box value. Exported
+// so the Watch input's change/clear handlers can update it immediately
+// (no-ops unless the device target is active). The status poll also
+// drives renderDeviceStream, but typing/clearing shouldn't wait for it.
+export function refreshDeviceStream() {
+  renderDeviceStream();
+}
+
+// "Play in" dropdown change. "Another device" is special: it isn't a
+// saved player — it exposes the engine on the LAN (after a warning) and
+// shows a QR/URL for a player on another device. Every other value is a
+// normal saved target. Leaving the device target closes the exposure:
+// device == the session, single playback.
+export async function onPlaybackTargetChange() {
+  const sel = $('playback-target');
+  const value = sel.value;
+  if (value === 'device') {
+    if (!lanExposed) {
+      const ok = await showConfirm({
+        title: 'Open on another device',
+        message: 'This exposes the engine on your local network so a player '
+               + 'on another device (e.g. VLC on a phone or tablet) can reach '
+               + 'it. While it is on, anything on your network can reach the '
+               + 'engine — use only on a network you trust. It turns off when '
+               + 'you pick another player.',
+        confirmText: 'Expose & show link',
+      });
+      if (!ok) { sel.value = lastNonDeviceTarget || 'browser'; return; }
+      // Re-binding the engine to the LAN re-spawns the container, which
+      // takes a few seconds — block with the shared overlay so the user
+      // isn't left wondering.
+      showBusy('Restarting engine to expose it on your network…');
+      try {
+        const s = await api('/api/engine/lan-expose', {
+          method: 'POST', body: JSON.stringify({ enabled: true }),
+        });
+        renderEngineLanToggle(s);
+      } catch (e) {
+        showError(e.message);
+        sel.value = lastNonDeviceTarget || 'browser';
+        return;
+      } finally {
+        hideBusy();
+      }
+    }
+    // Device target is the session — single playback. Stop any local
+    // player so nothing keeps streaming here: the in-tab mpegts player
+    // AND any host-side VLC/mpv.
+    if (mpegtsPlayer) stopInBrowserPlayback();
+    try { await api('/api/player/stop', { method: 'POST', body: '{}' }); }
+    catch (_) { /* best-effort */ }
+    livePlaybackTarget = '';
+    deviceTargetSelected = true;
+    renderDeviceStream();
+    refreshPlaybackMoveButton();
+    refreshPlayGate();   // disable Play + hide buffer for device mode
+    return;
+  }
+  // Leaving the device target → close exposure (transient) and hide the QR.
+  // Re-binding to loopback re-spawns the engine, so block with the overlay
+  // the same way the expose path does.
+  const wasDevice = deviceTargetSelected;
+  if (deviceTargetSelected) {
+    deviceTargetSelected = false;
+    hideDeviceStream();
+    showBusy('Restarting engine to close network access…');
+    try {
+      const s = await api('/api/engine/lan-expose', {
+        method: 'POST', body: JSON.stringify({ enabled: false }),
+      });
+      renderEngineLanToggle(s);
+    } catch (_) {
+      /* best-effort; the status poll reconciles the toggle state */
+    } finally {
+      hideBusy();
+    }
+  }
+  lastNonDeviceTarget = value;
+  refreshPlayGate();     // re-enable Play + restore buffer
+  // Await so cfg reflects the new target before we (maybe) play below.
+  await persistPlaybackTarget(value);
+  // Coming off the device target with a stream selected → start it on the
+  // newly chosen target (This tab, VLC/mpv, …). Device mode wasn't playing
+  // here, so the user expects it to resume locally now. Plain target
+  // switches (not from device) keep the old behaviour: no auto-play.
+  if (wasDevice && current && current.cid) {
+    $('cid-input').value = current.cid;
+    refreshClearButton();
+    showBusy('Starting…');
+    try { await play({ name: current.name, sub: current.altName }); }
+    finally { hideBusy(); }
+  }
 }
 
 // Gates the Play button on the latest engine status. Separated from the
 // poll so other code paths (e.g. just-started engine) can re-evaluate
 // immediately without waiting for the next tick.
 function refreshPlayGate() {
-  const view = describePlayButtonGate(engineState.last);
   const btn = $('play-btn');
   const hint = $('play-hint');
+  const bufferField = $('buffer-field');
+  // "Another device" target: nothing plays (or buffers) locally — the
+  // device's own player opens the link/QR below. Disable Play with a
+  // reason, and hide the local buffer control.
+  if (deviceTargetSelected) {
+    if (bufferField) bufferField.style.display = 'none';
+    btn.disabled = true;
+    hint.textContent =
+      'Playing on another device — open the link or scan the QR below on '
+      + 'that device. Or pick another player to play here.';
+    hint.className = 'gate-hint';
+    requestAnimationFrame(alignSearchToInput);
+    return;
+  }
+  if (bufferField) bufferField.style.display = '';
+  const view = describePlayButtonGate(engineState.last);
   btn.disabled = view.disabled;
   hint.textContent = view.hint.text;
   hint.className = view.hint.className;

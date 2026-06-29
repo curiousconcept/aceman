@@ -52,3 +52,31 @@ the file, regenerate the hash with `sha256sum mpegts.min.js > mpegts.min.js.sha2
 and update the version row in this README. The `<script src=>` in
 `web/ui/index.html` doesn't need to change — it references the
 allow-list key, not the upstream version.
+
+---
+
+## qrcode-generator.js
+
+Renders the "play on another device" URL as a scannable QR code for the
+LAN-exposed engine. Pure string generation — `createSvgTag()` returns an
+SVG we inject into the DOM; no canvas, no network, no runtime deps.
+
+| Field            | Value                                                              |
+|------------------|--------------------------------------------------------------------|
+| Package          | [`qrcode-generator`](https://github.com/kazuhikoarase/qrcode-generator) |
+| Version pinned   | **2.0.4**                                                          |
+| Upstream URL     | https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js |
+| Mirror           | https://unpkg.com/qrcode-generator@2.0.4/dist/qrcode.js           |
+| Local filename   | `qrcode-generator.js` (renamed from `qrcode.js`)                  |
+| License          | MIT (see header inside the file)                                  |
+| Size             | 56 694 bytes                                                       |
+| SHA-256          | `79ec86f82856005b1c887905cfccfcfbec3821ca61c7fd5a952faa5f778f791c` |
+
+### Re-download and verify
+
+```sh
+cd web/ui/domains/playback/vendor
+curl -sSL https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js \
+    -o qrcode-generator.js
+sha256sum -c qrcode-generator.js.sha256
+```

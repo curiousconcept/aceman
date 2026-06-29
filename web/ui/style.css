@@ -306,6 +306,8 @@
 
 /*@include domains/playback/live_dot.css*/
 
+/*@include domains/playback/device_stream.css*/
+
   /* Icon-only buttons (▶ in fav/search rows). Slightly larger glyph,
      fixed footprint so adjacent rows align even with one-character text. */
   button.icon-btn {
@@ -393,6 +395,17 @@
                     text-align: center; }
   #playback-title .sub { color: var(--mut); font-weight: normal;
                          margin-left: .4rem; text-transform: none; }
+  /* Click-to-copy affordance: only while a stream is playing (.clickable
+     is toggled on by setNowPlayingName). */
+  #playback-title.clickable { cursor: pointer; }
+  #playback-title.clickable:hover { text-decoration: underline; }
+
+  /* Now-playing id chip — shows the playing Ace ID (the title shows only
+     the name); click to copy it + drop it back in the Watch box. */
+  #now-playing-id { cursor: pointer; text-align: center; font-family: monospace;
+                    font-size: .78rem; color: var(--mut); margin: .35rem 0 0;
+                    word-break: break-all; }
+  #now-playing-id:hover { color: var(--fg); text-decoration: underline; }
 
   /* Modal: install-options dialog */
   .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.65);

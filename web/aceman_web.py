@@ -631,6 +631,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     # build a filesystem path.
     _STATIC_FILES = {
         "mpegts.min.js":                          ("application/javascript", "ui/domains/playback/vendor/mpegts.min.js"),
+        "qrcode-generator.js":                    ("application/javascript", "ui/domains/playback/vendor/qrcode-generator.js"),
         "favicon.ico":                            ("image/x-icon",  "ui/assets/static/favicon.ico"),
         "curiousconcept-patreon-button-dark.png": ("image/png",     "ui/assets/static/curiousconcept-patreon-button-dark.png"),
     }

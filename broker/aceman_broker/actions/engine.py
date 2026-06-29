@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import threading
 import time
+from urllib.parse import urlsplit
 
 from ..config import (
     ENGINE_URL,
@@ -34,13 +36,53 @@ from .restart_helpers import (
     recreate_container,
 )
 from ..logging_util import _log, _safe
-from ..validators import validate_lines
+from ..validators import validate_bool, validate_lines
 from ..wrapper import wrapper_alive, wrapper_cid
 from . import register
 
 
 # Serialises every state-changing engine action.
 _engine_lock = threading.Lock()
+
+# LAN exposure of the engine's HTTP API. OFF by default and NEVER
+# persisted: a fresh broker starts loopback-only every launch, so a
+# widened bind can't silently outlive a restart. The operator opts in
+# per session via the engine.set_lan action (the web UI's "Expose
+# engine on LAN" toggle). Read by _start_engine_unlocked when forming
+# the launch env. Guarded by _engine_lock for writes.
+_lan_exposed = False
+
+
+def _detect_lan_ip() -> str:
+    """Best-effort primary LAN IPv4 of this host. Opens a UDP socket and
+    'connects' to a TEST-NET address (RFC 5737) — no packet is sent for
+    UDP, the kernel just resolves which local interface would carry it,
+    which getsockname() then reports. Returns "" when there's no route
+    (offline / loopback-only)."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("192.0.2.1", 9))
+        return s.getsockname()[0]
+    except OSError:
+        return ""
+    finally:
+        s.close()
+
+
+def _lan_port() -> int:
+    """Host-side port the engine API is published on — the port a LAN
+    player connects to. Taken from the configured ENGINE_URL (the
+    broker and run-container.sh agree on this; default 6878)."""
+    return urlsplit(ENGINE_URL).port or 6878
+
+
+def _lan_info() -> dict:
+    """LAN-exposure fields shared by engine.status and engine.set_lan."""
+    return {
+        "lan_exposed": _lan_exposed,
+        "lan_ip": _detect_lan_ip(),
+        "lan_port": _lan_port(),
+    }
 
 
 import re as _re
@@ -114,6 +156,7 @@ def action_engine_status(params: "dict | None" = None) -> dict:
         # entirely (acestream:// link → desktop entry → external
         # player). Empty when no wrapper is up.
         "wrapper_cid": wrapper_cid() if alive else "",
+        **_lan_info(),
     }
 
 
@@ -129,6 +172,12 @@ def _start_engine_unlocked() -> dict:
     env["ACE_DETACH"] = "1"
     env["ACE_NAME"] = NAME
     env["ACE_IMAGE"] = IMAGE
+    if _lan_exposed:
+        # Operator opted in this session: bind the engine's host API
+        # port on all interfaces so a player on another LAN device
+        # (phone/tablet VLC) can reach /ace/getstream. Without this the
+        # bind stays loopback-only. See action_engine_set_lan.
+        env["ACE_API_HOST"] = "0.0.0.0"
     try:
         r = subprocess.run(
             ["bash", str(RUN_SH)],
@@ -158,19 +207,53 @@ def action_engine_start(params: "dict | None" = None) -> dict:
         return _start_engine_unlocked()
 
 
+def _stop_engine_unlocked() -> dict:
+    """The body of action_engine_stop without the _engine_lock acquire,
+    so set_lan can stop-then-respawn while already holding the lock."""
+    if not container_running():
+        return {"stopped": False, "reason": "not running"}
+    _log("engine", "stop: '%s'", NAME)
+    try:
+        subprocess.run(
+            ["podman", "stop", "-t", "5", NAME],
+            capture_output=True, timeout=STOP_TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+        raise RuntimeError(f"podman stop failed: {e}") from e
+    return {"stopped": True}
+
+
 def action_engine_stop(params: "dict | None" = None) -> dict:
     with _engine_lock:
-        if not container_running():
-            return {"stopped": False, "reason": "not running"}
-        _log("engine", "stop: '%s'", NAME)
-        try:
-            subprocess.run(
-                ["podman", "stop", "-t", "5", NAME],
-                capture_output=True, timeout=STOP_TIMEOUT,
-            )
-        except (FileNotFoundError, subprocess.TimeoutExpired) as e:
-            raise RuntimeError(f"podman stop failed: {e}") from e
-        return {"stopped": True}
+        return _stop_engine_unlocked()
+
+
+def action_engine_set_lan(params: "dict | None" = None) -> dict:
+    """Toggle LAN exposure of the engine's HTTP API for this session.
+
+    Enabled → the engine (re)launches with its host port bound to
+    0.0.0.0 so a player on another device (e.g. VLC on a phone/tablet)
+    can reach /ace/getstream. Disabled → back to loopback-only.
+
+    Flipping the flag re-spawns a running engine so the new bind takes
+    effect: the port binding is fixed at `podman run` time, so a plain
+    `podman restart` (or CreateCommand replay) would keep the old bind —
+    we stop and run the launcher fresh instead.
+
+    Not persisted: a fresh broker always starts loopback-only."""
+    enabled = validate_bool((params or {}).get("enabled"), "enabled")
+    global _lan_exposed
+    with _engine_lock:
+        changed = enabled != _lan_exposed
+        _lan_exposed = enabled
+        relaunched = False
+        if changed and container_running():
+            _log("engine", "set_lan: %s → re-spawning '%s'",
+                 "expose" if enabled else "loopback", NAME)
+            _stop_engine_unlocked()
+            _start_engine_unlocked()
+            relaunched = True
+        return {"relaunched": relaunched, **_lan_info()}
 
 
 def action_engine_restart(params: "dict | None" = None) -> dict:
@@ -270,5 +353,6 @@ def register(actions: dict) -> None:
     _r(actions, "engine.logs", action_engine_logs)
     _r(actions, "engine.start", action_engine_start)
     _r(actions, "engine.stop", action_engine_stop)
+    _r(actions, "engine.set_lan", action_engine_set_lan)
     _r(actions, "engine.restart", action_engine_restart)
     _r(actions, "engine.memory", action_engine_memory)

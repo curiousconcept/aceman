@@ -18,6 +18,7 @@
 // `hasAnyTarget` / `hintMessage` for the "no targets" gate.
 
 import { browserLabel } from './browsers.js';
+import { playerLabel, sourceLabel } from './players.js';
 import { encodeTarget } from './playback_target.js';
 
 const NO_TARGETS_HINT =
@@ -37,7 +38,7 @@ export function buildPlaybackOptions({
   // "This Firefox tab" reads clearer than the generic. With "show
   // all" on, the bare option could correspond to any of several
   // installs of the same browser, so the generic is honest.
-  const thisLabel = 'This tab';
+  const thisLabel = 'This Tab';
   const thisTabOption = {
     value: 'browser',
     text: inBrowserSupported
@@ -56,7 +57,7 @@ export function buildPlaybackOptions({
       : detectedBrowsers.filter(b => b.name !== currentBrowser);
   const otherBrowserOptions = otherBrowsers.map(b => ({
     value: encodeTarget('browser', b.name, b.source),
-    text: `${browserLabel(b.name)} (${b.source})`,
+    text: `${browserLabel(b.name)} (${sourceLabel(b.source)})`,
     disabled: false,
   }));
 
@@ -69,16 +70,16 @@ export function buildPlaybackOptions({
     : detectedPlayers.filter((p, i, arr) => arr.findIndex(q => q.name === p.name) === i);
   const playerOptions = visiblePlayers.map(p => ({
     value: encodeTarget('external', p.name, p.source),
-    text: `${p.name} (${p.source})`,
+    text: `${playerLabel(p.name)} (${sourceLabel(p.source)})`,
     disabled: false,
   }));
 
   const groups = [{ label: null, options: [thisTabOption] }];
   if (otherBrowserOptions.length) {
-    groups.push({ label: 'Other browsers', options: otherBrowserOptions });
+    groups.push({ label: 'Other Browsers', options: otherBrowserOptions });
   }
   if (playerOptions.length) {
-    groups.push({ label: 'External players', options: playerOptions });
+    groups.push({ label: 'External Players', options: playerOptions });
   }
 
   // "No usable target" means we have nothing the user can actually

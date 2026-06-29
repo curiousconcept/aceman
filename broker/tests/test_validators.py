@@ -13,6 +13,7 @@ from . import _setup  # noqa: F401
 import unittest
 
 from aceman_broker.validators import (
+    validate_bool,
     validate_container_name,
     validate_engine_url,
     validate_host,
@@ -194,6 +195,29 @@ class LinesTests(unittest.TestCase):
 
     def test_default_on_none(self):
         self.assertEqual(validate_lines(None), 200)
+
+
+class BoolTests(unittest.TestCase):
+    def test_accepts_true_false(self):
+        self.assertIs(validate_bool(True), True)
+        self.assertIs(validate_bool(False), False)
+
+    def test_rejects_int(self):
+        # 1/0 must NOT coerce — this flag widens network exposure.
+        for v in (1, 0, -1):
+            with self.subTest(v=v):
+                with self.assertRaises(ValueError):
+                    validate_bool(v)
+
+    def test_rejects_boolish_string(self):
+        for v in ("true", "false", "1", "", "yes"):
+            with self.subTest(v=v):
+                with self.assertRaises(ValueError):
+                    validate_bool(v)
+
+    def test_rejects_none(self):
+        with self.assertRaises(ValueError):
+            validate_bool(None)
 
 
 if __name__ == "__main__":

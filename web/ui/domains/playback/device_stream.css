@@ -1,0 +1,37 @@
+/* "Another device" target output on the player card: a clickable QR that
+   encodes the off-box stream URL, with the URL text revealed below it on
+   click (and copied to the clipboard). */
+
+#device-stream {
+  margin-top: .5rem;
+  text-align: center;
+}
+
+#device-stream .device-url,
+#device-stream .device-url:visited {
+  display: inline-block;
+  margin-top: .4rem;
+  font-family: monospace;
+  font-size: .8rem;
+  font-weight: 700;
+  word-break: break-all;
+  max-width: 100%;
+  /* Reuse the app accent — no default navy/purple link colour. */
+  color: var(--acc);
+}
+
+/* The QR is the click target (copy / reveal the link). */
+#device-stream-qr {
+  margin: .5rem auto 0;
+  width: 160px;
+  max-width: 60%;
+  cursor: pointer;
+}
+
+/* The vendored encoder emits an SVG sized by its viewBox; let it fill
+   the box above. The white rect inside keeps it scannable on any theme. */
+#device-stream-qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}

@@ -7,4 +7,10 @@
         <button id="engine-toggle" disabled>…</button>
         <span class="gate-hint" id="engine-toggle-hint"></span>
       </div>
+      <div class="row" style="justify-content: center">
+        <label title="Bind the engine on your local network so a player on another device (e.g. VLC on a phone or tablet) can reach it. Off by default; resets when aceman restarts."><input type="checkbox" id="lan-expose"> Expose engine on local network</label>
+      </div>
+      <div class="gate-hint warn" id="lan-expose-warn" style="display:none">
+        While this is on, anything on your local network can reach the engine. Use only on a network you trust.
+      </div>
     </div>

@@ -105,6 +105,40 @@ History, Search, and auto-shutdown when the tab closes.
 ./aceman_web --hard-refresh  # drop cached images; rebuild on next launch
 ```
 
+> After installing **App Launcher** (in the web UI), launch aceman from
+> your normal OS app menu/search like any other app — on WSL, use the
+> **aceman Desktop shortcut** (created by `shortcut.bat`, called by
+> `install.bat`).
+
+#### Watch on another device (phone, tablet, TV)
+
+The engine normally listens on `127.0.0.1` only, so nothing off this
+machine can reach it. To play a stream in VLC (or any HTTP player) on
+another device on the same network, pick **"Another device (VLC etc.)"**
+in the Player card's **Play in** list. A warning explains that this
+exposes the engine on your network; confirm it and the card shows the
+stream URL as a link, a Copy button, and a QR code. Open the URL in the
+player on your phone/tablet — the QR is just the same URL, scan it to
+skip typing.
+
+The URL looks like `http://<this-machine-ip>:6878/ace/getstream?id=<id>`
+and tracks the content id in the Watch box.
+
+Choosing this target *is* the playback session — the device plays it
+instead of this machine (the engine serves one stream at a time, so you
+don't play locally and on the device at once). Switching back to another
+player closes the exposure. There's also a manual **"Expose engine on
+local network"** checkbox on the engine card if you just want the bind
+open without the device UI.
+
+Two things to know:
+
+- **It widens access.** While exposure is on, anything on your local
+  network can reach the engine, not just your tablet. Only use it on a
+  network you trust.
+- **It resets on restart.** The exposed bind is never saved — every
+  `./aceman_web` launch starts loopback-only.
+
 #### aceman — external-player CLI
 
 Hands a stream straight to VLC/mpv and tears the engine session down

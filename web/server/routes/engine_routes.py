@@ -54,6 +54,22 @@ def engine_stop(req: Request, ctx: RouteContext) -> Response:
         return Response.error(502, str(e))
 
 
+def engine_lan_expose(req: Request, ctx: RouteContext) -> Response:
+    """Toggle LAN exposure of the engine HTTP API (for off-box players
+    like VLC on a phone/tablet). Body: ``{"enabled": <bool>}``. The
+    broker re-spawns the engine when the bind actually changes; the
+    response carries the new lan_exposed / lan_ip / lan_port fields."""
+    if not ctx.engine_mgr:
+        return Response.error(404, "engine management disabled")
+    enabled = req.body.get("enabled") if isinstance(req.body, dict) else None
+    if not isinstance(enabled, bool):
+        return Response.error(400, "enabled must be a boolean")
+    try:
+        return Response.json(200, ctx.engine_mgr.set_lan(enabled=enabled))
+    except EngineError as e:
+        return Response.error(502, str(e))
+
+
 def engine_memory(req: Request, ctx: RouteContext) -> Response:
     if not ctx.engine_mgr:
         return Response.json(200, {"available": False})
@@ -65,4 +81,5 @@ def register(router: Router) -> None:
     router.get("/api/engine/status", engine_status)
     router.post("/api/engine/start", engine_start)
     router.post("/api/engine/stop", engine_stop)
+    router.post("/api/engine/lan-expose", engine_lan_expose)
     router.get("/api/engine/memory", engine_memory)

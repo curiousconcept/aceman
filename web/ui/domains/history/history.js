@@ -60,15 +60,13 @@ export function showHistorySection(entries) {
   const list = $('history-list');
   if (!sec || !list) return;
   list.innerHTML = '';
-  if (!entries.length) {
-    const empty = document.createElement('div');
-    empty.className = 'status';
-    empty.style.cssText = 'text-align:center;padding:.5rem 0';
-    empty.textContent = 'No watch history yet.';
-    list.appendChild(empty);
-  } else {
-    const header = document.createElement('div');
-    header.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:.25rem';
+
+  // Header always carries a close (✕); Clear all only when there's
+  // something to clear. Close stays available even on the empty state so
+  // "Clear all" doesn't strand the user waiting for the 30s auto-hide.
+  const header = document.createElement('div');
+  header.style.cssText = 'display:flex;justify-content:flex-end;gap:.4rem;margin-bottom:.25rem';
+  if (entries.length) {
     const clearBtn = document.createElement('button');
     clearBtn.textContent = 'Clear all';
     clearBtn.className = 'danger-outline';
@@ -78,7 +76,23 @@ export function showHistorySection(entries) {
       showHistorySection([]);
     };
     header.appendChild(clearBtn);
-    list.appendChild(header);
+  }
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'icon-btn';
+  closeBtn.textContent = '✕';
+  closeBtn.title = 'Close history';
+  closeBtn.setAttribute('aria-label', 'Close history');
+  closeBtn.onclick = () => hideHistorySection();
+  header.appendChild(closeBtn);
+  list.appendChild(header);
+
+  if (!entries.length) {
+    const empty = document.createElement('div');
+    empty.className = 'status';
+    empty.style.cssText = 'text-align:center;padding:.5rem 0';
+    empty.textContent = 'No watch history yet.';
+    list.appendChild(empty);
+  } else {
     for (const h of entries) list.appendChild(renderHistoryRow(h));
   }
   sec.style.display = '';

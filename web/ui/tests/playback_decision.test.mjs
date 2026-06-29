@@ -38,7 +38,7 @@ test('browser mode + default_browser → open-in-other-browser', () => {
   assert.equal(p.kind, 'open-in-other-browser');
   assert.equal(p.browserName, 'firefox');
   assert.equal(p.browserSource, 'system');
-  assert.equal(p.label, 'Firefox (system)');
+  assert.equal(p.label, 'Firefox (System)');
 });
 
 test('open-in-other-browser label omits the parenthetical when no source', () => {

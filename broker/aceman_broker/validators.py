@@ -76,6 +76,16 @@ def validate_port(port) -> int:
     return port
 
 
+def validate_bool(value, name: str = "value") -> bool:
+    """Strict boolean. Refuses ints (``1``/``0``) and bool-ish strings —
+    a flag that widens the engine's network exposure must be set by an
+    explicit ``true``/``false``, never coerced from a stray ``1`` that
+    a buggy caller happened to send."""
+    if not isinstance(value, bool):
+        raise ValueError(f"{name} must be a boolean, got {value!r}")
+    return value
+
+
 def validate_lines(value, *, minimum: int = 1, maximum: int = 1000,
                    default: int = 200) -> int:
     """Line-count for log-tail actions. Out-of-range / non-int values

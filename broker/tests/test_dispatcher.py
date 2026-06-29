@@ -157,7 +157,8 @@ class RegistryShapeTests(unittest.TestCase):
     def test_all_expected_actions_registered(self):
         expected = {
             "engine.status", "engine.logs", "engine.start",
-            "engine.stop", "engine.restart", "engine.memory",
+            "engine.stop", "engine.set_lan", "engine.restart",
+            "engine.memory",
             "gpu.status",
             "image.status", "image.install", "image.remove",
             "players.list", "player.stop",

@@ -31,6 +31,7 @@
 // Pure. No DOM, no globals.
 
 import { browserLabel } from './browsers.js';
+import { sourceLabel } from './players.js';
 import { encodeTarget } from './playback_target.js';
 
 const FALLBACK_WARNING =
@@ -56,7 +57,7 @@ export function decidePlaybackPath(cfg, { inBrowserSupported } = {}) {
       browserName: cfg.default_browser,
       browserSource: source,
       label: source
-        ? `${browserLabel(cfg.default_browser)} (${source})`
+        ? `${browserLabel(cfg.default_browser)} (${sourceLabel(source)})`
         : browserLabel(cfg.default_browser),
     };
   }

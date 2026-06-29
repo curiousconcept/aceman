@@ -44,6 +44,12 @@ class EngineBrokerClient:
     def stop(self) -> dict:
         return self.broker.call("engine.stop", timeout=30)
 
+    def set_lan(self, *, enabled: bool) -> dict:
+        # May re-spawn a running engine (stop + launcher + probe), so
+        # give it the same generous budget as start().
+        return self.broker.call(
+            "engine.set_lan", params={"enabled": enabled}, timeout=120)
+
     def memory(self) -> dict:
         try:
             return self.broker.call("engine.memory", timeout=8)
