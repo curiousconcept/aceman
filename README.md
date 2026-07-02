@@ -194,6 +194,28 @@ systemctl reboot
 If depsolve names another `*-free` package, add it to the remove list and
 retry — that's the whole game.
 
+#### NVIDIA: enabling NVENC (GPU H.264 encode)
+
+The web app transcodes with ffmpeg **inside its container**, and
+`h264_nvenc` there loads the host driver's `libcuda.so.1`. A host driver
+alone doesn't put that library in the container, so NVENC fails with
+`Cannot load libcuda.so.1` and playback falls back to CPU. Inject the GPU
+via **CDI** (Container Device Interface): install the [NVIDIA Container
+Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/),
+then generate the spec once:
+
+```bash
+sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+```
+
+`run-web-container.sh` then passes `--device nvidia.com/gpu=all` to the web
+container automatically (it keys on that spec existing), and the broker's
+GPU probe only offers NVENC once the container can actually load it — no
+CDI spec means CPU fallback, never a hard failure. `check_install_dependencies.sh`
+flags this on NVIDIA boxes. (A GPU container also runs without a read-only
+rootfs, because the NVIDIA CDI hook runs `ldconfig`; all other container
+isolation is unchanged.)
+
 ### Windows (WSL2)
 
 Grab the repo ZIP —

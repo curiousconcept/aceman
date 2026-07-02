@@ -221,6 +221,31 @@ check_browser_h264() {
   warn "    enabling H.264 for browser playback')."
 }
 
+# ---- NVIDIA NVENC advisory -------------------------------------------------
+# h264_nvenc runs inside the web container and loads the host driver's
+# libcuda.so.1, which only reaches the container when the GPU is injected via
+# CDI. Without a CDI spec, NVENC fails with "Cannot load libcuda.so.1"
+# (issue #12) and aceman falls back to CPU. Only relevant with an NVIDIA GPU,
+# so stay silent otherwise.
+check_nvidia_cdi() {
+  command -v nvidia-smi >/dev/null 2>&1 || return 0
+  section "NVIDIA GPU encode (NVENC)"
+  local spec="" f
+  for f in /etc/cdi/nvidia*.yaml /etc/cdi/nvidia*.json \
+           /var/run/cdi/nvidia*.yaml /var/run/cdi/nvidia*.json; do
+    [ -e "$f" ] && { spec="$f"; break; }
+  done
+  if [ -n "$spec" ]; then
+    ok "CDI spec present ($spec) — the container can load libcuda for NVENC"
+    return
+  fi
+  warn "NVIDIA driver found but no CDI spec — the web container can't load"
+  warn "libcuda, so GPU encode falls back to CPU. Install the NVIDIA Container"
+  warn "Toolkit, then generate the spec:"
+  warn "  sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml"
+  warn "  (toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/)"
+}
+
 offer_players() {
   [ -t 0 ] || return 0   # never prompt non-interactively
   section "Optional: external players (mpv + VLC)"
@@ -238,6 +263,7 @@ offer_players() {
 }
 
 check_browser_h264
+check_nvidia_cdi
 offer_players
 
 section "Done."

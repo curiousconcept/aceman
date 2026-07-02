@@ -1063,7 +1063,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             cmd = cls._cpu_cmd(playback_url)
         elif gpu.get("backend") == "nvidia":
             if not (cls._gpu_caps or {}).get("nvidia"):
-                _log("proxy", "NVIDIA requested but nvidia-smi absent — CPU fallback")
+                _log("proxy", "NVIDIA requested but unavailable (no driver or "
+                              "no container CDI passthrough) — CPU fallback")
                 cmd = cls._cpu_cmd(playback_url)
             else:
                 cmd = cls._nvidia_cmd(playback_url, gpu)

@@ -78,6 +78,70 @@ class ProbeVaapiTests(unittest.TestCase):
             self.assertIsNone(gpu._probe_vaapi())
 
 
+class ProbeNvidiaTests(unittest.TestCase):
+    """NVENC runs inside the web container; it needs the GPU via CDI or it
+    can't load libcuda (issue #12). The probe must refuse nvidia when the
+    container is up but no CDI passthrough is wired, and allow it in --native
+    mode (no web container) where ffmpeg runs on the host."""
+
+    def test_none_when_no_nvidia_smi(self):
+        with mock.patch.object(gpu.shutil, "which", return_value=None):
+            self.assertIsNone(gpu._probe_nvidia())
+
+    def test_refused_when_container_up_without_cdi(self):
+        with mock.patch.object(gpu.shutil, "which", return_value="/usr/bin/nvidia-smi"), \
+             mock.patch.object(gpu, "container_running_named", return_value=True), \
+             mock.patch.object(gpu, "_nvidia_cdi_ready", return_value=False):
+            self.assertIsNone(gpu._probe_nvidia())
+
+    def test_allowed_when_container_up_with_cdi(self):
+        completed = subprocess.CompletedProcess([], 0, stdout="GeForce RTX 4070\n", stderr="")
+        with mock.patch.object(gpu.shutil, "which", return_value="/usr/bin/nvidia-smi"), \
+             mock.patch.object(gpu, "container_running_named", return_value=True), \
+             mock.patch.object(gpu, "_nvidia_cdi_ready", return_value=True), \
+             mock.patch.object(gpu.subprocess, "run", return_value=completed):
+            out = gpu._probe_nvidia()
+        self.assertEqual(out, {"name": "GeForce RTX 4070"})
+
+    def test_allowed_in_native_mode_without_cdi(self):
+        # No web container → ffmpeg runs on the host, where the driver works;
+        # CDI isn't required. _nvidia_cdi_ready must not even be consulted.
+        completed = subprocess.CompletedProcess([], 0, stdout="GeForce RTX 4070\n", stderr="")
+        with mock.patch.object(gpu.shutil, "which", return_value="/usr/bin/nvidia-smi"), \
+             mock.patch.object(gpu, "container_running_named", return_value=False), \
+             mock.patch.object(gpu, "_nvidia_cdi_ready", side_effect=AssertionError("must not check CDI in native mode")), \
+             mock.patch.object(gpu.subprocess, "run", return_value=completed):
+            out = gpu._probe_nvidia()
+        self.assertEqual(out["name"], "GeForce RTX 4070")
+
+
+class NvidiaCdiReadyTests(unittest.TestCase):
+    def test_false_when_no_control_node(self):
+        with mock.patch.object(gpu.pathlib.Path, "exists", return_value=False):
+            self.assertFalse(gpu._nvidia_cdi_ready())
+
+    def test_true_when_control_node_and_spec_present(self):
+        # /dev/nvidiactl exists; /etc/cdi holds an nvidia.yaml spec.
+        real_isdir = gpu.pathlib.Path.is_dir
+
+        class _Spec:
+            name = "nvidia.yaml"
+            suffix = ".yaml"
+
+        with mock.patch.object(gpu.pathlib.Path, "exists", return_value=True), \
+             mock.patch.object(gpu.pathlib.Path, "is_dir", autospec=True,
+                               side_effect=lambda self: str(self) == "/etc/cdi"), \
+             mock.patch.object(gpu.pathlib.Path, "iterdir", autospec=True,
+                               side_effect=lambda self: [_Spec()] if str(self) == "/etc/cdi" else []):
+            self.assertTrue(gpu._nvidia_cdi_ready())
+        del real_isdir
+
+    def test_false_when_control_node_but_no_spec(self):
+        with mock.patch.object(gpu.pathlib.Path, "exists", return_value=True), \
+             mock.patch.object(gpu.pathlib.Path, "is_dir", autospec=True, return_value=False):
+            self.assertFalse(gpu._nvidia_cdi_ready())
+
+
 class ProbeQsvTests(unittest.TestCase):
     def test_qsv_true_for_intel_driver(self):
         self.assertTrue(gpu._probe_qsv({"driver": "iHD"}))
