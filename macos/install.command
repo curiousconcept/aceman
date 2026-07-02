@@ -36,12 +36,15 @@ cat <<'EOF'
 
 === Install complete ===
 Next:
-  1. Provide the engine tarball (needed to play). Get the Linux ->
-     Ubuntu, amd64 / py3.10 build from
-       https://docs.acestream.net/products/#linux
-     rename it to engine.tar.gz, and place it in the guest at
+  1. Provide the engine tarball (needed to play).
+     Easy way: double-click import_engine.command — it finds the
+       acestream...ubuntu...x86_64...tar.gz in your Downloads (or waits
+       while you download it) and installs it into the guest for you.
+     Manual way: get the Linux -> Ubuntu, amd64 / py3.10 build from
+       https://docs.acestream.net/products/#linux, rename it to
+       engine.tar.gz, and place it in the guest at
        ~/Projects/aceman/engine/container/dist/engine.tar.gz
-     Open the guest with:  limactl shell aceman
+       (open the guest with:  limactl shell aceman)
   2. Launch:  double-click run.command
   3. Optional acestream:// click-to-play:
        internal/register-handler.command

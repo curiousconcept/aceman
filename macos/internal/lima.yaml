@@ -16,6 +16,18 @@ cpus: 4
 memory: "6GiB"
 disk: "30GiB"
 
+# Host mounts. Lima mounts your Mac home read-only by default; the kit adds
+# ~/Downloads WRITABLE so backup_to_downloads.command can save favourites there
+# and import_engine.command can read the engine tarball you download. The guest
+# sees these at the same absolute path as macOS (/Users/<you>/...), which is
+# why the .command wrappers pass ACE_DOWNLOADS="$HOME/Downloads" straight
+# through. Existing guests need `limactl delete aceman` + reinstall (or
+# `limactl edit aceman`) to pick this up — mounts are fixed at guest creation.
+mounts:
+  - location: "~"
+  - location: "~/Downloads"
+    writable: true
+
 # Apple Silicon: acestream ships only as a Linux x86_64 binary, so the
 # engine container runs under x86 emulation. Rosetta is far faster than
 # qemu-user. Ignored on Intel Macs. The tester confirms this works on

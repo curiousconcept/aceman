@@ -47,6 +47,15 @@ Double-click **`install.command`** (or run it in Terminal). It:
 The Ace Stream engine tarball isn't shipped in the repo (it's
 proprietary). The web UI runs without it, but **playback needs it**.
 
+**Easy way — `import_engine.command`.** Double-click it. It looks in your
+Mac **Downloads** for a file named like
+`acestream_3.2.11_ubuntu_22.04_x86_64_py3.10.tar.gz` and installs it into
+the guest as `engine.tar.gz`. If it isn't there yet, it prints the download
+link and **waits** — download the file in your browser, then press Enter in
+the window to finish.
+
+**Manual way.** If you'd rather place it yourself:
+
 1. Download from **https://docs.acestream.net/products/#linux** — the
    **Linux → Ubuntu, amd64 / py3.10** build (same one WSL uses).
 2. Open the guest shell:
@@ -115,14 +124,44 @@ Gracefully stops the web + engine containers, then stops the Lima guest.
 
 ## Update — `update.command`
 
-Runs `git pull` inside the guest (`~/Projects/aceman`). Read the trust
-note it prints first.
+Force-updates the guest clone: fetches GitHub and **hard-resets** to the
+latest code (local repo edits are discarded — your favourites live outside
+the repo in the guest's `~/.config/aceman`, so they're kept). Read the
+trust note it prints first.
+
+Pass a branch name to update to something other than `main`, e.g. to try a
+feature branch:
+
+```
+./update.command some-branch
+```
+
+With no argument it updates the branch the clone is on (or `main`). Inside
+the guest the same job is `./update.sh [branch]`.
+
+## Back up / restore favourites — `backup_to_downloads.command` / `restore_from_downloads.command`
+
+**`backup_to_downloads.command`** saves your aceman favourites (and prefs)
+from inside the guest into your Mac **Downloads**, as a timestamped
+`aceman-backup-…` folder. Run it any time; `uninstall.command` also
+**offers** it before deleting anything.
+
+**`restore_from_downloads.command`** is the reverse — it copies a backup
+folder back into `~/.config/aceman` in the guest. With no argument it
+restores the newest `aceman-backup-…` in Downloads. Stop aceman (close the
+web UI) before restoring, then relaunch to see the favourites.
+
+> These rely on `~/Downloads` being **mounted writable** into the guest
+> (set in `internal/lima.yaml`). A guest created before that mount was
+> added won't have it — recreate it (`limactl delete aceman` then
+> `install.command`) or run `limactl edit aceman`.
 
 ## Uninstall — `uninstall.command`
 
 Removes the `acestream://` handler and **deletes the Lima `aceman` guest
-and everything in it.** Confirms first. Leaves Lima itself installed
-(`brew uninstall lima` to remove).
+and everything in it.** Confirms first, and **offers to back up your
+favourites to Downloads first** (via `backup_to_downloads.command`). Leaves
+Lima itself installed (`brew uninstall lima` to remove).
 
 ## Files in this kit
 
@@ -130,10 +169,13 @@ and everything in it.** Confirms first. Leaves Lima itself installed
 |------------------------------|------|
 | `install.command`            | Install Lima, create + provision the guest |
 | `run.command`                | Launch aceman_web and auto-open the browser |
+| `import_engine.command`      | Install the engine tarball from Downloads (waits if missing) |
 | `get_url_stream.command`     | Resolve an id to a URL for native IINA/VLC |
+| `backup_to_downloads.command` | Save favourites to your Mac Downloads |
+| `restore_from_downloads.command` | Restore favourites from a Downloads backup |
 | `stop.command`               | Stop containers + the Lima guest |
-| `update.command`             | `git pull` the project inside the guest |
-| `uninstall.command`          | Delete the guest + remove the handler |
+| `update.command`             | Force-update the project inside the guest (optional branch arg) |
+| `uninstall.command`          | Delete the guest + remove the handler (offers a favourites backup first) |
 | `internal/lima.yaml`         | Lima VM config (image, Rosetta, port forwards) |
 | `internal/setup.sh`          | Guest provisioning (podman, git, clone) |
 | `internal/handler.applescript` | `acestream://` open-location handler source |
