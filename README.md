@@ -195,16 +195,20 @@ retry — that's the whole game.
 
 ### Windows (WSL2)
 
-Grab the repo ZIP —
-[direct download](https://github.com/curiousconcept/aceman/archive/refs/heads/main.zip) —
-extract it, open the `wsl/` folder, then double-click `install.bat`
-followed by `run.bat`. As on Linux, you'll do the **one-time engine
-tarball download** (from
-[docs.acestream.net](https://docs.acestream.net/products/#linux)) and
-drop it into the clone — `wsl/README.md` shows the exact Windows path.
-Prefer Windows VLC/mpv over browser playback? `get_url_stream.bat <id>`
-hands a stream URL to your player. Full steps:
-**[`wsl/README.md`](wsl/README.md)**.
+Open **PowerShell** and paste this one line (use the copy button). It
+downloads the repo, extracts it to your Downloads, and — after you press
+Enter — launches the installer:
+
+```powershell
+[Net.ServicePointManager]::SecurityProtocol='Tls12'; Invoke-WebRequest https://github.com/curiousconcept/aceman/archive/refs/heads/main.zip -OutFile "$env:TEMP\aceman.zip"; Expand-Archive "$env:TEMP\aceman.zip" "$env:USERPROFILE\Downloads" -Force; $d="$env:USERPROFILE\Downloads\aceman-main\wsl"; Read-Host "Extracted to $d - press Enter to run install.bat"; Start-Process "$d\install.bat"
+```
+
+`install.bat` self-elevates (approve the UAC prompt), provisions WSL + Ubuntu,
+and offers the **one-time engine tarball import** (proprietary, from
+[docs.acestream.net](https://docs.acestream.net/products/#linux); verified
+against a vetted hash). Then launch with `run.bat`. Prefer Windows VLC/mpv
+over browser playback? `get_url_stream.bat <id>` hands a stream URL to your
+player. Full steps: **[`wsl/README.md`](wsl/README.md)**.
 
 ### macOS
 
