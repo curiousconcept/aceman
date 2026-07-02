@@ -1,21 +1,19 @@
 param([Parameter(Mandatory = $true)][string]$Url)
 
-# Wait until the aceman web server actually answers, THEN let run.bat open the
-# browser. Two things matter here:
+# Wait until the aceman web server answers, THEN let run.bat open the browser.
 #
-#  1) Probe from Windows (this is the browser's own path). The guest port can be
-#     up several seconds before WSL wires Windows' localhost forwarding to it, so
-#     a check from inside WSL passes too early and the browser opens to a
-#     connection reset. Probing the real Windows URL waits for the path the
-#     browser uses. The proxy is disabled so we don't pay the WPAD/IE overhead
-#     that made Invoke-WebRequest lag. A full GetResponse() (not a bare TCP
-#     connect) confirms Python is serving - podman accepts the handshake before
-#     the app is up.
+# Probe 127.0.0.1 directly, NOT 'localhost': localhost resolves to ::1 (IPv6)
+# first, and .NET's WebRequest does not fall back to IPv4 the way a browser's
+# happy-eyeballs does - so probing 'localhost' fails forever even while the
+# server is up on IPv4 and the browser reaches it fine. Proxy is disabled so we
+# don't pay the WPAD/IE lag. Any HTTP answer (even a non-200) means the server
+# is serving, so we stop and open. The loop is BOUNDED - if the probe never
+# succeeds we still hand back so run.bat opens the browser rather than hanging.
 #
-#  2) Show a busy mouse cursor while waiting. We swap the normal arrow for the
-#     app-starting (arrow+hourglass) cursor system-wide, and ALWAYS restore it in
-#     finally. App-starting (not the full hourglass) still lets you click, so a
-#     hard window-close mid-wait leaves a usable pointer until the next sign-in.
+# While waiting, swap the arrow for the app-starting (arrow+hourglass) cursor
+# and ALWAYS restore it in finally. The loop is bounded, so finally is reached.
+
+$probe = $Url -replace 'localhost', '127.0.0.1'
 
 $sig = @'
 [DllImport("user32.dll")] public static extern IntPtr LoadCursor(IntPtr hInstance, int lpCursorName);
@@ -24,21 +22,24 @@ $sig = @'
 '@
 Add-Type -MemberDefinition $sig -Name Cur -Namespace W | Out-Null
 
-$OCR_NORMAL      = 32512   # the system arrow we replace
-$IDC_APPSTARTING = 32650   # arrow + hourglass
-$SPI_SETCURSORS  = 0x0057  # reload all system cursors from the user's defaults
+$OCR_NORMAL      = 32512
+$IDC_APPSTARTING = 32650
+$SPI_SETCURSORS  = 0x0057
 
 try {
     [W.Cur]::SetSystemCursor([W.Cur]::LoadCursor([IntPtr]::Zero, $IDC_APPSTARTING), $OCR_NORMAL) | Out-Null
 
-    for ($i = 0; $i -lt 150; $i++) {
+    for ($i = 0; $i -lt 40; $i++) {
         try {
-            $r = [Net.WebRequest]::Create($Url)
+            $r = [Net.WebRequest]::Create($probe)
             $r.Proxy = $null
-            $r.Timeout = 1500
+            $r.Timeout = 1000
             $r.GetResponse().Close()
             break
         } catch {
+            # A WebException that carries a Response means the server answered
+            # (some non-2xx) - it IS up, so stop waiting.
+            if ($_.Exception.Response) { break }
             Start-Sleep -Milliseconds 500
         }
     }
