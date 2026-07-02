@@ -1,0 +1,54 @@
+# Lima VM config for aceman — the macOS analogue of WSL2+Ubuntu.
+#
+# The whole aceman stack (broker, web, engine, podman) runs INSIDE this
+# guest, unchanged from Linux. macOS reaches it only over the forwarded
+# ports below plus the .command helpers.
+
+# Ubuntu LTS — matches what wsl/ provisions, so internal/setup.sh is
+# near-identical between the two kits.
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+
+cpus: 4
+memory: "6GiB"
+disk: "30GiB"
+
+# Host mounts. Lima mounts your Mac home read-only by default; the kit adds
+# ~/Downloads WRITABLE so backup_to_downloads.command can save favourites there
+# and import_engine.command can read the engine tarball you download. The guest
+# sees these at the same absolute path as macOS (/Users/<you>/...), which is
+# why the .command wrappers pass ACE_DOWNLOADS="$HOME/Downloads" straight
+# through. Existing guests need `limactl delete aceman` + reinstall (or
+# `limactl edit aceman`) to pick this up — mounts are fixed at guest creation.
+mounts:
+  - location: "~"
+  - location: "~/Downloads"
+    writable: true
+
+# Apple Silicon: acestream ships only as a Linux x86_64 binary, so the
+# engine container runs under x86 emulation. Rosetta is far faster than
+# qemu-user. Ignored on Intel Macs. The tester confirms this works on
+# their chip — see HANDOFF.md.
+rosetta:
+  enabled: true
+  binfmt: true
+
+# Port forwarding. Lima auto-forwards guest ports bound to 0.0.0.0 to
+# 127.0.0.1 on macOS. The kit launches the web (8770) and engine API
+# (6878) bound to 0.0.0.0 inside the guest (--host 0.0.0.0 /
+# ACE_API_HOST=0.0.0.0), so Safari and a native player reach them at
+# http://localhost:PORT. Pinned here as well, belt-and-suspenders.
+portForwards:
+  - guestPortRange: [8770, 8770]
+    hostIP: "127.0.0.1"
+  - guestPortRange: [6878, 6878]
+    hostIP: "127.0.0.1"
+
+# GPU: no VA-API encode passthrough is possible (macOS is Metal-only;
+# Lima's virtio-gpu gives display/3D, not a VA-API render node). The
+# engine's gpu.py probe finds no node and falls back to CPU transcode —
+# same as WSL. GPU-accelerated PLAYBACK still comes free via the native
+# IINA/VLC path (VideoToolbox). No GPU mount is requested here on purpose.
