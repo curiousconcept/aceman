@@ -33,7 +33,13 @@ if errorlevel 2 (
 
 echo.
 echo Updating...
-wsl -d Ubuntu -- bash -lc "cd ~/Projects/aceman && ./update.sh %BRANCH%"
+:: Force-pull inline via git, NOT by calling ./update.sh - update is the tool
+:: you run to escape a stale clone, so it must not depend on any file being in
+:: that clone (a clone old enough to lack update.sh is exactly when you need
+:: this). Mirrors update.sh: fetch, then hard-reset the branch to origin. No
+:: inner double quotes (cmd would eat them); branch names have no spaces, so
+:: bare $B is safe, and `case` handles the empty/detached cases quote-free.
+wsl -d Ubuntu -- bash -lc "cd ~/Projects/aceman 2>/dev/null || { echo 'aceman: ~/Projects/aceman not found - run install.bat first.'; exit 1; }; B='%BRANCH%'; B=${B:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null)}; case $B in HEAD|'') B=main ;; esac; echo updating to origin/$B ...; git fetch origin $B && git reset --hard && git checkout -B $B origin/$B"
 set "RC=%ERRORLEVEL%"
 
 echo.
