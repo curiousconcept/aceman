@@ -45,6 +45,15 @@ Double-click **`install.bat`** and approve the UAC prompts. It:
 The Ace Stream engine tarball isn't shipped in the repo (it's
 proprietary). The web UI runs without it, but **playback needs it**.
 
+**Easy way — `import_engine.bat`.** Double-click it. It looks in your
+Windows **Downloads** for a file named like
+`acestream_3.2.11_ubuntu_22.04_x86_64_py3.10.tar.gz` and installs it into
+the clone as `engine.tar.gz` for you. If it isn't there yet, it prints the
+download link and **waits** — download the file in your browser, then press
+Enter in the window to finish. (It stays open the whole time.)
+
+**Manual way.** If you'd rather place it yourself:
+
 1. Download it from **https://docs.acestream.net/products/#linux** —
    the **Linux → Ubuntu, amd64 / py3.10** build.
 2. Rename it to `engine.tar.gz` and place it in the clone at:
@@ -177,10 +186,18 @@ kit, re-run `register-handler.bat`.
 Runs `git pull` inside `~/Projects/aceman`. Read the trust note it prints
 first.
 
+## Back up favourites — `backup_to_downloads.bat`
+
+Saves your aceman favourites (and prefs) from inside WSL into your Windows
+**Downloads** folder, as a timestamped `aceman-backup-…` folder. Run it any
+time; `uninstall.bat` also **offers** it before deleting anything. To
+restore, copy the files back into `~/.config/aceman/` in WSL.
+
 ## Uninstall — `uninstall.bat`
 
 Unregisters the Ubuntu distro (deletes everything in it) and removes the
-WSL app. Confirms before doing anything.
+WSL app. Confirms before doing anything, and **offers to back up your
+favourites to Downloads first** (via `backup_to_downloads.bat`).
 
 ## Files in this kit
 
@@ -190,12 +207,14 @@ The ones you actually run:
 |----------------------|-------------------------------------------------------------|
 | `install.bat`        | Install WSL + Ubuntu, provision, create the Desktop shortcut |
 | `run.bat`            | Launch aceman_web and auto-open the browser                 |
+| `import_engine.bat`  | Install the engine tarball from Downloads (waits if missing) |
 | `get_url_stream.bat` | Resolve an Ace Stream id to a URL for Windows VLC/mpv        |
 | `enable_shared_networking.bat`  | Switch WSL to mirrored networking (play on another device) |
 | `disable_shared_networking.bat` | Revert WSL to default (NAT) networking          |
+| `backup_to_downloads.bat` | Save favourites to your Windows Downloads              |
 | `stop.bat`           | Stop aceman containers and shut down WSL                     |
 | `update.bat`         | `git pull` the project inside WSL                           |
-| `uninstall.bat`      | Remove the distro + WSL                                     |
+| `uninstall.bat`      | Remove the distro + WSL (offers a favourites backup first)  |
 
 `internal/` holds bits used by `install.bat` and the optional handler —
 mostly no need to touch them: `setup.sh` (Linux provisioning),

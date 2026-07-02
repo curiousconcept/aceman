@@ -89,7 +89,10 @@ all the external-player path needs) or **native** distro packages.
 **One-time:** download the Ace Stream engine tarball (proprietary, not
 shipped here) from **https://docs.acestream.net/products/#linux** — the
 **Linux → Ubuntu, amd64 / py3.10** build — and save it as
-`engine/container/dist/engine.tar.gz`. Details + hash verification:
+`engine/container/dist/engine.tar.gz`. Or run **`./import_engine.sh`**: it
+picks the `acestream…ubuntu…x86_64….tar.gz` out of your `~/Downloads` and
+installs it there for you (offering to download it if it's missing).
+Details + hash verification:
 [`engine/container/README.md`](engine/container/README.md).
 
 Then pick how you want to watch:

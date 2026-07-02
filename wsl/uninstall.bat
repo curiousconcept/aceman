@@ -26,6 +26,12 @@ if errorlevel 2 (
     exit /b
 )
 
+:: Offer to save favourites to Downloads before the distro (and its config)
+:: is deleted. The distro is still registered here, so the backup can read it.
+echo.
+choice /c YN /m "Save aceman favourites to your Downloads first"
+if not errorlevel 2 call "%~dp0backup_to_downloads.bat" nopause
+
 :: clear any leftover auto-resume key from the installer
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce" /v AcemanSetup /f >nul 2>&1
 

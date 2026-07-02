@@ -12,6 +12,8 @@
 #      original acestream:// scheme handler comes back).
 #   7. Delete ~/.config/aceman/ (favourites DB, config.json, shell
 #      favourites file) — only if y to the "wipe config" prompt.
+#      Offers to back the favourites up to Downloads first
+#      (backup_to_downloads.sh).
 #   8. Delete ~/.cache/aceman/ (web.log, broker.log) — only if y to
 #      the "wipe logs" prompt.
 #   9. Shut down the broker (best-effort over its unix socket).
@@ -215,6 +217,19 @@ do_wipe_config() {
     if [ "$KEEP_CONFIG" = 1 ]; then
         echo "kept $CONFIG_DIR"
         return 0
+    fi
+    # About to delete the favourites DB — offer to save it to Downloads
+    # first. Non-destructive, so under --yes we just do it; interactively
+    # we ask (default yes). A backup failure never blocks the uninstall.
+    _backup="$SCRIPT_DIR/backup_to_downloads.sh"
+    if [ -x "$_backup" ]; then
+        _do_backup=1
+        if [ "$ASSUME_YES" != 1 ]; then
+            printf 'Save favourites to your Downloads first? [Y/n] '
+            read -r reply
+            case "$reply" in n|N|no|NO) _do_backup=0 ;; esac
+        fi
+        [ "$_do_backup" = 1 ] && { "$_backup" || echo "backup failed (continuing)"; }
     fi
     rm -rf "$CONFIG_DIR" \
         && echo "removed $CONFIG_DIR" \
