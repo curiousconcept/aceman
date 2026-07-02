@@ -67,7 +67,7 @@ anything host-related directly.
 
 ## Quick start
 
-<h1 align="center">Linux</h1>
+# Linux
 
 Requires rootless **Podman ≥ 4.0**, **Python ≥ 3.9** (stdlib only),
 **bash ≥ 4**, and **curl** + **jq**. The web UI plays in your **browser**,
@@ -193,7 +193,7 @@ systemctl reboot
 If depsolve names another `*-free` package, add it to the remove list and
 retry — that's the whole game.
 
-<h1 align="center">Windows (WSL2)</h1>
+# Windows (WSL2)
 
 Open **PowerShell** and paste this one line (use the copy button). It
 downloads the repo, extracts it to your Downloads, and — after you press
@@ -210,7 +210,7 @@ against a vetted hash). Then launch with `run.bat`. Prefer Windows VLC/mpv
 over browser playback? `get_url_stream.bat <id>` hands a stream URL to your
 player. Full steps: **[`wsl/README.md`](wsl/README.md)**.
 
-<h1 align="center">macOS</h1>
+# macOS
 
 _Not supported yet._
 
