@@ -57,12 +57,15 @@ if not defined SILENT (
     )
 )
 
-:: 1) Per-user: set networkingMode=mirrored + hostAddressLoopback=true in
-::    %UserProfile%\.wslconfig (back up once, replace any existing lines, add
-::    [wsl2] if missing). hostAddressLoopback lets Windows reach the guest over
-::    loopback under mirrored mode - NAT mode did that automatically, mirrored
-::    mode does NOT. Without it run.bat opens http://localhost:8770/ and the web
-::    UI never loads (the guest isn't reachable on localhost).
+:: 1) Per-user: write %UserProfile%\.wslconfig (back up once, replace any
+::    existing lines, create sections if missing). Two keys in TWO sections:
+::      [wsl2] networkingMode=mirrored     - share the Windows LAN interfaces
+::      [experimental] hostAddressLoopback=true - let Windows reach the guest
+::         over loopback under mirrored mode (NAT did this automatically,
+::         mirrored does NOT). Without it run.bat opens http://localhost:8770/
+::         and the web UI never loads.
+::    hostAddressLoopback is an [experimental] key, NOT a [wsl2] one - putting it
+::    under [wsl2] makes WSL warn "unknown key 'wsl2.hostAddressLoopback'".
 set "CFG=%UserProfile%\.wslconfig"
 if exist "%CFG%" if not exist "%CFG%.aceman-backup" copy /y "%CFG%" "%CFG%.aceman-backup" >nul
 
@@ -71,16 +74,17 @@ powershell -NoProfile -Command ^
   "$lines = if (Test-Path -LiteralPath $cfg) { @(Get-Content -LiteralPath $cfg) } else { @() };" ^
   "$lines = $lines | Where-Object { $_ -notmatch 'networkingMode' -and $_ -notmatch 'hostAddressLoopback' };" ^
   "if (-not ($lines | Where-Object { $_ -match '\[wsl2\]' })) { $lines = @('[wsl2]') + $lines };" ^
+  "if (-not ($lines | Where-Object { $_ -match '\[experimental\]' })) { $lines += '[experimental]' };" ^
   "$out = New-Object System.Collections.Generic.List[string];" ^
-  "$done = $false;" ^
-  "foreach ($l in $lines) { $out.Add($l); if (-not $done -and $l -match '\[wsl2\]') { $out.Add('networkingMode=mirrored'); $out.Add('hostAddressLoopback=true'); $done = $true } };" ^
+  "$w = $false; $e = $false;" ^
+  "foreach ($l in $lines) { $out.Add($l); if (-not $w -and $l -match '\[wsl2\]') { $out.Add('networkingMode=mirrored'); $w = $true }; if (-not $e -and $l -match '\[experimental\]') { $out.Add('hostAddressLoopback=true'); $e = $true } };" ^
   "Set-Content -LiteralPath $cfg -Value $out -Encoding ASCII"
 if errorlevel 1 (
     echo   FAILED to update %CFG% - nothing changed there.
     if not defined SILENT pause
     exit /b 1
 )
-echo   networkingMode=mirrored + hostAddressLoopback=true written to %CFG%.
+echo   [wsl2] networkingMode=mirrored + [experimental] hostAddressLoopback=true written to %CFG%.
 
 :: 2) Machine-wide: open the engine port in Windows firewall. Needs admin, so
 ::    run netsh through an elevated cmd (one UAC prompt). Delete-then-add keeps

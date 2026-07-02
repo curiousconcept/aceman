@@ -73,6 +73,11 @@ exit /b
 :phase2
 echo === Phase 2: installing Ubuntu + provisioning ===
 
+:: Self-heal a stale .wslconfig from an older aceman (hostAddressLoopback under
+:: [wsl2] instead of [experimental]) before the noisy wsl calls below, so WSL
+:: stops warning "unknown key 'wsl2.hostAddressLoopback'". No-op if clean.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0internal\repair_wslconfig.ps1"
+
 :: feature is active now - actually install the distro
 echo Installing Ubuntu...
 wsl --install -d Ubuntu --no-launch
@@ -128,7 +133,7 @@ echo window opens with the download link and waits for you. Say No to do it
 echo later with import_engine.bat ^(nothing will play until you do^).
 echo.
 choice /c YN /m "Import the Ace Stream engine now"
-if not errorlevel 2 call "%~dp0import_engine.bat"
+if not errorlevel 2 call "%~dp0import_engine.bat" nopause
 
 :: Optional: let a phone/tablet on your LAN play streams. This switches WSL
 :: to "mirrored" networking (enable_shared_networking.bat does the work).

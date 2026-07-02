@@ -12,6 +12,10 @@ echo  THIS window waits for the URL, then opens your browser.
 echo ============================================================
 echo.
 
+:: Self-heal a stale .wslconfig from an older aceman (misplaced
+:: hostAddressLoopback) so WSL stops warning on every call. No-op if clean.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0internal\repair_wslconfig.ps1"
+
 :: Truncate the web log first so we read THIS run's URL, not a stale one.
 wsl -d Ubuntu -- bash -lc "mkdir -p ~/.cache/aceman; : > ~/.cache/aceman/web.log" 2>nul
 

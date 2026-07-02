@@ -13,7 +13,7 @@ set "WSLDL="
 for /f "delims=" %%i in ('wsl -d Ubuntu -- wslpath -a "%WINDL%" 2^>nul') do set "WSLDL=%%i"
 if not defined WSLDL (
     echo Could not resolve your Windows Downloads folder in WSL.
-    pause
+    if "%~1"=="" pause
     exit /b 1
 )
 
@@ -21,5 +21,7 @@ if not defined WSLDL (
 :: and run via `bash <script>` so we don't depend on the clone's exec bit.
 wsl -d Ubuntu -- bash -lc "cd ~/Projects/aceman 2>/dev/null || { echo 'aceman: ~/Projects/aceman not found - is the guest provisioned? Run install.bat first.'; exit 0; }; if [ -f import_engine.sh ]; then ACE_DOWNLOADS='%WSLDL%' bash import_engine.sh; else echo 'aceman: import_engine.sh is missing from your WSL clone (it predates this feature). Run update.bat to refresh the clone, then retry.'; fi"
 echo.
-pause
+:: Pause only on a standalone double-click (no arg) so the result stays visible.
+:: install.bat passes "nopause" so a successful import flows straight on.
+if "%~1"=="" pause
 exit /b
