@@ -17,7 +17,9 @@ if not defined WSLDL (
     exit /b 1
 )
 
-wsl -d Ubuntu -- bash -lc "cd ~/Projects/aceman && ACE_DOWNLOADS='%WSLDL%' ./import_engine.sh"
+:: Guard the clone + script (the Windows kit and in-WSL clone update separately)
+:: and run via `bash <script>` so we don't depend on the clone's exec bit.
+wsl -d Ubuntu -- bash -lc "cd ~/Projects/aceman 2>/dev/null || { echo 'aceman: ~/Projects/aceman not found - is the guest provisioned? Run install.bat first.'; exit 0; }; if [ -f import_engine.sh ]; then ACE_DOWNLOADS='%WSLDL%' bash import_engine.sh; else echo 'aceman: import_engine.sh is missing from your WSL clone (it predates this feature). Run update.bat to refresh the clone, then retry.'; fi"
 echo.
 pause
 exit /b
