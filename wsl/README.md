@@ -13,13 +13,13 @@ command line.
 
 Quickest — open **PowerShell** and paste this one line (use the copy button
 in the top-right of the box). It downloads the whole repo, extracts it into
-your Downloads, and opens the `wsl/` folder ready to run:
+your Downloads, and — after you press Enter — launches `install.bat` for you:
 
 ```powershell
-[Net.ServicePointManager]::SecurityProtocol='Tls12'; Invoke-WebRequest https://github.com/curiousconcept/aceman/archive/refs/heads/main.zip -OutFile "$env:TEMP\aceman.zip"; Expand-Archive "$env:TEMP\aceman.zip" "$env:USERPROFILE\Downloads" -Force; ii "$env:USERPROFILE\Downloads\aceman-main\wsl"
+[Net.ServicePointManager]::SecurityProtocol='Tls12'; Invoke-WebRequest https://github.com/curiousconcept/aceman/archive/refs/heads/main.zip -OutFile "$env:TEMP\aceman.zip"; Expand-Archive "$env:TEMP\aceman.zip" "$env:USERPROFILE\Downloads" -Force; $d="$env:USERPROFILE\Downloads\aceman-main\wsl"; Read-Host "Extracted to $d - press Enter to run install.bat"; Start-Process "$d\install.bat"
 ```
 
-Then double-click `install.bat` in the folder that opens.
+`install.bat` asks for admin (approve the UAC prompt) and takes it from there.
 
 ## 0. Make sure WiFi reconnects after reboot
 
