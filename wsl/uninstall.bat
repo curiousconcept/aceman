@@ -15,7 +15,7 @@ wsl --list --verbose
 echo.
 echo This will:
 echo   1. Unregister (DELETE) the Ubuntu distro and ALL its files
-echo   2. Uninstall the WSL app itself
+echo   2. Optionally uninstall the WSL app itself (asked separately below)
 echo.
 echo *** This permanently deletes everything inside the distro. ***
 echo.
@@ -45,8 +45,18 @@ wsl --shutdown
 echo Unregistering Ubuntu distro...
 wsl --unregister Ubuntu
 
-echo Uninstalling the WSL app...
-wsl --uninstall
+:: Removing aceman only needs the distro gone. Uninstalling the WSL app itself
+:: is separate and optional - answer N to keep it if you use WSL for anything
+:: else, or want a re-install to skip the reboot (install.bat detects WSL is
+:: still enabled and goes straight to provisioning).
+echo.
+choice /c YN /m "Also uninstall the WSL app itself (removes WSL for ALL distros)"
+if not errorlevel 2 (
+    echo Uninstalling the WSL app...
+    wsl --uninstall
+) else (
+    echo Keeping the WSL app. A re-install will skip the reboot.
+)
 
 echo.
 echo === Uninstall complete. ===

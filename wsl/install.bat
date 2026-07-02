@@ -14,6 +14,20 @@ if %errorlevel% neq 0 (
 
 if /i "%~1"=="phase2" goto phase2
 
+:: If WSL is already enabled from a previous install, skip the enable+reboot
+:: and go straight to provisioning. The reboot is only needed the FIRST time
+:: the optional features are turned on; once they read 'Enabled' (not
+:: 'EnablePending') they're active and a distro installs without a restart.
+:: This is what lets a re-install avoid the reboot dance. Needs admin, which
+:: we already self-elevated to above.
+echo Checking whether WSL is already enabled...
+powershell -NoProfile -Command "if((Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux).State -eq 'Enabled' -and (Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform).State -eq 'Enabled'){exit 0}else{exit 1}"
+if %errorlevel%==0 (
+    echo WSL is already enabled - skipping the reboot, going straight to provisioning.
+    echo.
+    goto phase2
+)
+
 :: ================= PHASE 1: enable WSL, then reboot =================
 echo === Phase 1: enabling WSL (no distro yet) ===
 

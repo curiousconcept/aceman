@@ -11,13 +11,15 @@ command line.
 
 ## Get the files onto Windows
 
-Quickest — direct ZIP of the whole repo, no clicking around GitHub:
+Quickest — open **PowerShell** and paste this one line (use the copy button
+in the top-right of the box). It downloads the whole repo, extracts it into
+your Downloads, and opens the `wsl/` folder ready to run:
 
-> **https://github.com/curiousconcept/aceman/archive/refs/heads/main.zip**
+```powershell
+[Net.ServicePointManager]::SecurityProtocol='Tls12'; Invoke-WebRequest https://github.com/curiousconcept/aceman/archive/refs/heads/main.zip -OutFile "$env:TEMP\aceman.zip"; Expand-Archive "$env:TEMP\aceman.zip" "$env:USERPROFILE\Downloads" -Force; ii "$env:USERPROFILE\Downloads\aceman-main\wsl"
+```
 
-Download, extract, and open the `wsl/` folder inside. Keep all the files
-in that folder together. (Equivalent: on the repo page, **Code → Download
-ZIP**.)
+Then double-click `install.bat` in the folder that opens.
 
 ## 0. Make sure WiFi reconnects after reboot
 
