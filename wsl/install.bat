@@ -96,6 +96,15 @@ wsl -d Ubuntu -u root -- bash -c "tr -d '\r' < '%SH%' | bash"
 echo Creating Desktop shortcut...
 call "%~dp0internal\shortcut.bat" silent
 
+:: Apply /etc/wsl.conf NOW so the steps below run as the 'ace' user. setup.sh
+:: cloned the repo to ace's home (~/Projects/aceman) and set default=ace, but
+:: wsl.conf only takes effect on a fresh boot. Until this shutdown, `wsl` still
+:: logs in as root - whose ~ has no clone - so the engine import would fail with
+:: "~/Projects/aceman not found". The trailing shutdown below re-applies this
+:: (plus any networking change); an extra shutdown here is harmless.
+echo Applying WSL config so the next steps run as 'ace'...
+wsl --shutdown
+
 :: The Ace Stream engine tarball is proprietary and NOT shipped in the repo, so
 :: nothing plays until it's imported once. Offer it here so a fresh install is
 :: play-ready - otherwise the first launch dead-ends on "engine.tar.gz missing".
