@@ -10,6 +10,11 @@ param([Parameter(Mandatory = $true)][string]$Url)
 # is serving, so we stop and open. The loop is BOUNDED - if the probe never
 # succeeds we still hand back so run.bat opens the browser rather than hanging.
 #
+# The loop BREAKS as soon as the server answers - that's the real trigger, so a
+# slow start just waits longer. The iteration cap (~2 min of refused attempts,
+# which are fast) is only a safety net so a truly-unreachable server can't hang
+# forever; it is NOT meant to fire on a normal startup.
+#
 # While waiting, swap the arrow for the app-starting (arrow+hourglass) cursor
 # and ALWAYS restore it in finally. The loop is bounded, so finally is reached.
 
@@ -29,7 +34,7 @@ $SPI_SETCURSORS  = 0x0057
 try {
     [W.Cur]::SetSystemCursor([W.Cur]::LoadCursor([IntPtr]::Zero, $IDC_APPSTARTING), $OCR_NORMAL) | Out-Null
 
-    for ($i = 0; $i -lt 40; $i++) {
+    for ($i = 0; $i -lt 240; $i++) {
         try {
             $r = [Net.WebRequest]::Create($probe)
             $r.Proxy = $null
