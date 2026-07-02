@@ -183,8 +183,20 @@ kit, re-run `register-handler.bat`.
 
 ## Update — `update.bat`
 
-Runs `git pull` inside `~/Projects/aceman`. Read the trust note it prints
-first.
+Force-updates the WSL project: fetches GitHub and **hard-resets** the clone
+to the latest code (local repo edits are discarded — your favourites live
+outside the repo in `~/.config/aceman`, so they're kept). Read the trust
+note it prints first.
+
+Pass a branch name to update to something other than `main`, e.g. to try a
+feature branch:
+
+```
+update.bat some-branch
+```
+
+With no argument it updates the branch the clone is currently on (or `main`).
+On Linux the same job is `./update.sh [branch]` in the repo root.
 
 ## Back up / restore favourites — `backup_to_downloads.bat` / `restore_from_downloads.bat`
 
@@ -219,7 +231,7 @@ The ones you actually run:
 | `backup_to_downloads.bat` | Save favourites to your Windows Downloads              |
 | `restore_from_downloads.bat` | Restore favourites from a Downloads backup         |
 | `stop.bat`           | Stop aceman containers and shut down WSL                     |
-| `update.bat`         | `git pull` the project inside WSL                           |
+| `update.bat`         | Force-update the project inside WSL (optional branch arg)    |
 | `uninstall.bat`      | Remove the distro + WSL (offers a favourites backup first)  |
 
 `internal/` holds bits used by `install.bat` and the optional handler —
