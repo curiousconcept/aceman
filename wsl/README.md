@@ -251,9 +251,10 @@ The ones you actually run:
 | `update.bat`         | Force-update the project inside WSL (optional branch arg)    |
 | `uninstall.bat`      | Remove the distro + WSL (offers a favourites backup first)  |
 
-`internal/` holds bits used by `install.bat` and the optional handler —
-mostly no need to touch them: `setup.sh` (Linux provisioning),
+`internal/` holds bits used by `install.bat`, `run.bat` and the optional
+handler — mostly no need to touch them: `setup.sh` (Linux provisioning),
 `shortcut.bat` (Desktop-shortcut creator, also runnable on its own),
-`aceman.ico` (the shortcut icon), and `register-handler.bat` /
-`unregister-handler.bat` (the optional `acestream://` click-to-play
-handler — see above).
+`aceman.ico` (the shortcut icon), `wait_ready.ps1` (the browser-open helper
+`run.bat` calls — waits for the server, shows a busy cursor), and
+`register-handler.bat` / `unregister-handler.bat` (the optional
+`acestream://` click-to-play handler — see above).

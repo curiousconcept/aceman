@@ -38,17 +38,13 @@ echo.
 echo Found URL: %URL%
 echo Waiting for the server to actually respond, then opening your browser...
 
-:: The URL is logged BEFORE the web container is serving, so we must wait for a
-:: real response. Probe INSIDE WSL (bash /dev/tcp + an actual HTTP request, the
-:: same check aceman_web uses) - fast and local. The old Windows-side
-:: Invoke-WebRequest to localhost paid IPv6/proxy/IE overhead and opened the
-:: browser long after the server was ready. A bare TCP connect isn't enough:
-:: podman's netstack accepts the handshake before Python calls serve_forever(),
-:: so we wait for an 'HTTP/' response line. ~30s cap, then open regardless.
-:: Port comes from the URL (tokens split on : and /); default 8770 if unparsed.
-for /f "tokens=3 delims=:/" %%p in ("%URL%") do set "PORT=%%p"
-if not defined PORT set "PORT=8770"
-wsl -d Ubuntu -- bash -lc "for i in $(seq 1 60); do if (exec 3<>/dev/tcp/127.0.0.1/%PORT%; printf 'GET / HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3; head -1 <&3 | grep -q '^HTTP/') 2>/dev/null; then exit 0; fi; sleep 0.5; done; exit 1"
+:: Wait until the server actually answers, probing from WINDOWS (the browser's
+:: own path). The guest port comes up seconds before WSL forwards Windows
+:: localhost to it, so a check from inside WSL passed too early and the browser
+:: opened to a connection reset. The helper probes the real URL (proxy disabled,
+:: so no WPAD/IE lag) and shows a busy mouse cursor while waiting, restored when
+:: it returns. See internal\wait_ready.ps1.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0internal\wait_ready.ps1" "%URL%"
 
 :: Open in the default browser. cmd's `start` is the reliable launcher here -
 :: PowerShell's Start-Process on a bare URL can silently no-op depending on how
