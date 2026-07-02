@@ -82,6 +82,21 @@ wsl -d Ubuntu -u root -- bash -c "tr -d '\r' < '%SH%' | bash"
 echo Creating Desktop shortcut...
 call "%~dp0internal\shortcut.bat" silent
 
+:: The Ace Stream engine tarball is proprietary and NOT shipped in the repo, so
+:: nothing plays until it's imported once. Offer it here so a fresh install is
+:: play-ready - otherwise the first launch dead-ends on "engine.tar.gz missing".
+:: import_engine.bat looks in Downloads and, if the file isn't there yet, prints
+:: the download link and waits. Say N to skip and run import_engine.bat later.
+echo.
+echo The Ace Stream engine is what actually PLAYS streams. It's a separate,
+echo proprietary download that is NOT bundled with aceman, so it has to be
+echo imported once. If you say Yes and it isn't in your Downloads yet, a
+echo window opens with the download link and waits for you. Say No to do it
+echo later with import_engine.bat ^(nothing will play until you do^).
+echo.
+choice /c YN /m "Import the Ace Stream engine now"
+if not errorlevel 2 call "%~dp0import_engine.bat"
+
 :: Optional: let a phone/tablet on your LAN play streams. This switches WSL
 :: to "mirrored" networking (enable_shared_networking.bat does the work).
 :: Off unless the user opts in - the wsl --shutdown below applies it.

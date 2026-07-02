@@ -45,12 +45,23 @@ Double-click **`install.bat`** and approve the UAC prompts. It:
 The Ace Stream engine tarball isn't shipped in the repo (it's
 proprietary). The web UI runs without it, but **playback needs it**.
 
+`install.bat` **offers this at the end of provisioning** — say **Y** there
+and it runs the import for you (see below). If you skipped it, or are setting
+up playback later, do it yourself:
+
 **Easy way — `import_engine.bat`.** Double-click it. It looks in your
 Windows **Downloads** for a file named like
 `acestream_3.2.11_ubuntu_22.04_x86_64_py3.10.tar.gz` and installs it into
 the clone as `engine.tar.gz` for you. If it isn't there yet, it prints the
 download link and **waits** — download the file in your browser, then press
 Enter in the window to finish. (It stays open the whole time.)
+
+Before installing it, the import **verifies the tarball's SHA-256** against
+the vetted hash the repo ships (`engine.tar.gz.sha256`). If it doesn't match
+— the upstream Ace Stream build changed since this aceman was released, or the
+file is corrupt — it **refuses** the file, says so, and keeps waiting for you
+to drop in the matching build. This is why nothing plays with a random engine
+tarball: aceman only installs the exact build it was tested against.
 
 **Manual way.** If you'd rather place it yourself:
 
