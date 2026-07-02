@@ -19,9 +19,10 @@ if errorlevel 2 (
     exit /b 1
 )
 
-:: 1) Per-user: drop the networkingMode line (leave the rest of the file).
-powershell -NoProfile -Command "$cfg = Join-Path $env:USERPROFILE '.wslconfig'; if (Test-Path -LiteralPath $cfg) { Set-Content -LiteralPath $cfg -Value (@(Get-Content -LiteralPath $cfg) | Where-Object { $_ -notmatch 'networkingMode' }) -Encoding ASCII }"
-echo   Removed networkingMode from %CFG% ^(if present^).
+:: 1) Per-user: drop the networkingMode + hostAddressLoopback lines that
+::    enable_shared_networking.bat added (leave the rest of the file).
+powershell -NoProfile -Command "$cfg = Join-Path $env:USERPROFILE '.wslconfig'; if (Test-Path -LiteralPath $cfg) { Set-Content -LiteralPath $cfg -Value (@(Get-Content -LiteralPath $cfg) | Where-Object { $_ -notmatch 'networkingMode' -and $_ -notmatch 'hostAddressLoopback' }) -Encoding ASCII }"
+echo   Removed networkingMode + hostAddressLoopback from %CFG% ^(if present^).
 
 :: 2) Machine-wide: remove the firewall rule (needs admin - one UAC prompt).
 echo   Approve the admin prompt to remove the firewall rule...

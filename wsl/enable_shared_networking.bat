@@ -57,26 +57,30 @@ if not defined SILENT (
     )
 )
 
-:: 1) Per-user: set networkingMode=mirrored in %UserProfile%\.wslconfig
-::    (back up once, replace any existing line, add [wsl2] if missing).
+:: 1) Per-user: set networkingMode=mirrored + hostAddressLoopback=true in
+::    %UserProfile%\.wslconfig (back up once, replace any existing lines, add
+::    [wsl2] if missing). hostAddressLoopback lets Windows reach the guest over
+::    loopback under mirrored mode - NAT mode did that automatically, mirrored
+::    mode does NOT. Without it run.bat opens http://localhost:8770/ and the web
+::    UI never loads (the guest isn't reachable on localhost).
 set "CFG=%UserProfile%\.wslconfig"
 if exist "%CFG%" if not exist "%CFG%.aceman-backup" copy /y "%CFG%" "%CFG%.aceman-backup" >nul
 
 powershell -NoProfile -Command ^
   "$cfg = Join-Path $env:USERPROFILE '.wslconfig';" ^
   "$lines = if (Test-Path -LiteralPath $cfg) { @(Get-Content -LiteralPath $cfg) } else { @() };" ^
-  "$lines = $lines | Where-Object { $_ -notmatch 'networkingMode' };" ^
+  "$lines = $lines | Where-Object { $_ -notmatch 'networkingMode' -and $_ -notmatch 'hostAddressLoopback' };" ^
   "if (-not ($lines | Where-Object { $_ -match '\[wsl2\]' })) { $lines = @('[wsl2]') + $lines };" ^
   "$out = New-Object System.Collections.Generic.List[string];" ^
   "$done = $false;" ^
-  "foreach ($l in $lines) { $out.Add($l); if (-not $done -and $l -match '\[wsl2\]') { $out.Add('networkingMode=mirrored'); $done = $true } };" ^
+  "foreach ($l in $lines) { $out.Add($l); if (-not $done -and $l -match '\[wsl2\]') { $out.Add('networkingMode=mirrored'); $out.Add('hostAddressLoopback=true'); $done = $true } };" ^
   "Set-Content -LiteralPath $cfg -Value $out -Encoding ASCII"
 if errorlevel 1 (
     echo   FAILED to update %CFG% - nothing changed there.
     if not defined SILENT pause
     exit /b 1
 )
-echo   networkingMode=mirrored written to %CFG%.
+echo   networkingMode=mirrored + hostAddressLoopback=true written to %CFG%.
 
 :: 2) Machine-wide: open the engine port in Windows firewall. Needs admin, so
 ::    run netsh through an elevated cmd (one UAC prompt). Delete-then-add keeps

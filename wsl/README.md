@@ -129,8 +129,12 @@ enable_shared_networking.bat
 
 It does two things, then restarts WSL so they take effect:
 
-1. Writes `networkingMode=mirrored` to `%UserProfile%\.wslconfig` (per-user,
-   a one-time backup is saved as `.wslconfig.aceman-backup`).
+1. Writes `networkingMode=mirrored` **and** `hostAddressLoopback=true` to
+   `%UserProfile%\.wslconfig` (per-user, a one-time backup is saved as
+   `.wslconfig.aceman-backup`). The loopback line keeps
+   `http://localhost:8770/` — the web UI `run.bat` opens — reachable from
+   Windows; mirrored mode drops that automatic forwarding, so without it the
+   browser opens to a page that never loads.
 2. Opens **TCP port 6878** (the engine) inbound in Windows firewall. This
    step needs admin, so it pops **one UAC prompt** — approve it. Without
    the firewall rule, mirrored networking alone still leaves the phone
@@ -151,8 +155,8 @@ never needs it.
 > or shared Wi-Fi.
 
 To turn it back off, run **`disable_shared_networking.bat`** — it removes
-the `networkingMode` line, closes port 6878 (one UAC prompt), and restarts
-WSL, putting you back on default (NAT) networking.
+the `networkingMode` and `hostAddressLoopback` lines, closes port 6878 (one
+UAC prompt), and restarts WSL, putting you back on default (NAT) networking.
 
 `install.bat` offers the enable step as a prompt during setup; running
 the scripts yourself later does exactly the same thing.
