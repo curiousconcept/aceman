@@ -14,16 +14,26 @@ if %errorlevel% neq 0 (
 
 if /i "%~1"=="phase2" goto phase2
 
-:: If WSL is already enabled from a previous install, skip the enable+reboot
-:: and go straight to provisioning. The reboot is only needed the FIRST time
-:: the optional features are turned on; once they read 'Enabled' (not
-:: 'EnablePending') they're active and a distro installs without a restart.
-:: This is what lets a re-install avoid the reboot dance. Needs admin, which
-:: we already self-elevated to above.
-echo Checking whether WSL is already enabled...
-powershell -NoProfile -Command "if((Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux).State -eq 'Enabled' -and (Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform).State -eq 'Enabled'){exit 0}else{exit 1}"
-if %errorlevel%==0 (
-    echo WSL is already enabled - skipping the reboot, going straight to provisioning.
+:: If WSL already works (a previous install left it - even if its distro was
+:: removed), skip the enable+reboot and go straight to provisioning. The reboot
+:: is only needed the FIRST time WSL2's platform feature is turned on; once it's
+:: active a distro installs without a restart. Detect with two independent
+:: signals - EITHER is enough - because Store-based WSL runs WSL2 with only
+:: VirtualMachinePlatform (the legacy 'Microsoft-Windows-Subsystem-Linux'
+:: feature can read not-Enabled while WSL still works, which is why requiring it
+:: wrongly forced a reboot):
+::   1) `wsl --status` succeeds - the WSL app is installed and functional, or
+::   2) VirtualMachinePlatform already reads Enabled (WSL2 is active).
+:: Use `if errorlevel` (not %errorlevel%) so it's read at runtime inside blocks.
+echo Checking whether WSL already works...
+set "WSLREADY="
+wsl --status >nul 2>&1 && set "WSLREADY=1"
+if not defined WSLREADY (
+    powershell -NoProfile -Command "if((Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform).State -eq 'Enabled'){exit 0}else{exit 1}"
+    if not errorlevel 1 set "WSLREADY=1"
+)
+if defined WSLREADY (
+    echo WSL is already available - skipping the reboot, going straight to provisioning.
     echo.
     goto phase2
 )
