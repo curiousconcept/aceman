@@ -308,6 +308,8 @@
 
 /*@include domains/playback/device_stream.css*/
 
+/*@include domains/search/search.css*/
+
   /* Icon-only buttons (▶ in fav/search rows). Slightly larger glyph,
      fixed footprint so adjacent rows align even with one-character text. */
   button.icon-btn {
